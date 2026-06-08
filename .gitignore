@@ -1,0 +1,11 @@
+robots/g1/build/
+robots/g1/log/
+*.o
+*.a
+.DS_Store
+__pycache__/
+*.pyc
+robots/g1/config/policy/**/exported/
+!robots/g1/config/policy/**/params/
+robots/g1/config/clips/*.npz
+!robots/g1/config/clips/manifest.yaml
