@@ -44,7 +44,7 @@ int main(int argc, char** argv)
 
     std::cout << "Press [L2 + Up] for FixStand.\n";
     std::cout << "Press [R2 + A] to start WBC tracking.\n";
-    std::cout << "Press [RB + D-pad right / left] to switch motion clips.\n";
+    std::cout << "Press [R2 + D-pad right / left] to switch motion clips.\n";
     std::cout << "Press [L2 + B] for Passive.\n";
 
     while (true) {

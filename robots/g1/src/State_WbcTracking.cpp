@@ -1,5 +1,6 @@
 #include "State_WbcTracking.h"
 #include "MotionClipLibrary.h"
+#include "g1_body_names.h"
 #include "unitree_articulation.h"
 #include "unitree_joystick_dsl.hpp"
 #include "isaaclab/envs/mdp/observations/observations.h"
@@ -22,22 +23,40 @@ std::array<float, 3> quatApplyInverse(
 
 int resolve_anchor_body_index(const cnpy::npz_t& npz, const std::string& anchor_name)
 {
-  if (npz.find("body_names") == npz.end()) {
-    return 0;
-  }
-  const auto names_arr = npz.at("body_names");
-  const size_t n = names_arr.shape[0];
-  for (size_t i = 0; i < n; ++i) {
-    std::string name(
-      names_arr.data<char>() + i * names_arr.word_size,
-      names_arr.word_size);
-    while (!name.empty() && name.back() == '\0') {
-      name.pop_back();
+  auto match_names = [&](const auto& names) -> int {
+    for (size_t i = 0; i < names.size(); ++i) {
+      if (names[i] == anchor_name) {
+        return static_cast<int>(i);
+      }
     }
-    if (name == anchor_name) {
-      return static_cast<int>(i);
+    return -1;
+  };
+
+  if (npz.find("body_names") != npz.end()) {
+    const auto names_arr = npz.at("body_names");
+    const size_t n = names_arr.shape[0];
+    for (size_t i = 0; i < n; ++i) {
+      std::string name(
+        names_arr.data<char>() + i * names_arr.word_size,
+        names_arr.word_size);
+      while (!name.empty() && name.back() == '\0') {
+        name.pop_back();
+      }
+      if (name == anchor_name) {
+        return static_cast<int>(i);
+      }
     }
   }
+
+  const int fallback = match_names(G1_FULL_BODY_NAMES);
+  if (fallback >= 0) {
+    spdlog::warn(
+      "NPZ missing body_names; using built-in G1 body list for anchor '{}'",
+      anchor_name);
+    return fallback;
+  }
+
+  spdlog::error("Anchor body '{}' not found in motion clip", anchor_name);
   return 0;
 }
 
@@ -280,8 +299,8 @@ State_WbcTracking::State_WbcTracking(int state_mode, std::string state_string)
     has_state_estimation_ = env->cfg["wbc_tracking"]["has_state_estimation"].as<bool>(false);
   }
 
-  const std::string clip_next_expr = cfg["clip_next"].as<std::string>("RB + right.on_pressed");
-  const std::string clip_prev_expr = cfg["clip_prev"].as<std::string>("RB + left.on_pressed");
+  const std::string clip_next_expr = cfg["clip_next"].as<std::string>("RT + right.on_pressed");
+  const std::string clip_prev_expr = cfg["clip_prev"].as<std::string>("RT + left.on_pressed");
   clip_next_fn_ = compileJoystickExpr(clip_next_expr);
   clip_prev_fn_ = compileJoystickExpr(clip_prev_expr);
 
@@ -305,10 +324,12 @@ void State_WbcTracking::handleClipSwitch()
   if (!switched) {
     return;
   }
+  std::lock_guard<std::mutex> lock(tracking_mtx_);
   motion = clip_library_->loader();
   time_range_[1] = motion->duration;
   env->reset();
   clip_library_->resetPlayback(env->robot->data, time_range_[0]);
+  spdlog::info("Switched motion clip to: {}", clip_library_->currentName());
 }
 
 void State_WbcTracking::enter()
@@ -332,10 +353,12 @@ void State_WbcTracking::enter()
     clip_library_->resetPlayback(env->robot->data, time_range_[0]);
 
     while (policy_thread_running) {
-      handleClipSwitch();
-      env->robot->update();
-      motion->update(env->episode_length * env->step_dt + time_range_[0]);
-      env->step();
+      {
+        std::lock_guard<std::mutex> lock(tracking_mtx_);
+        env->robot->update();
+        motion->update(env->episode_length * env->step_dt + time_range_[0]);
+        env->step();
+      }
       std::this_thread::sleep_until(sleep_till);
       sleep_till += dt;
     }
@@ -344,6 +367,9 @@ void State_WbcTracking::enter()
 
 void State_WbcTracking::run()
 {
+  handleClipSwitch();
+
+  std::lock_guard<std::mutex> lock(tracking_mtx_);
   const auto action = env->action_manager->processed_actions();
   for (size_t i = 0; i < env->robot->data.joint_ids_map.size(); ++i) {
     lowcmd->msg_.motor_cmd()[env->robot->data.joint_ids_map[i]].q() = action[i];

@@ -1,2 +1,17 @@
 # Motion clips (shared WBC policy). Register with export/add_clip.py
-clips: []
+clips:
+  - name: walk1_subject1
+    file: walk1_subject1.npz
+  - name: walk_ff_start_180_R_001__A176_M
+    file: walk_ff_start_180_R_001__A176_M.npz
+  - name: walk_ff_start_180_R_001__A256_M
+    file: walk_ff_start_180_R_001__A256_M.npz
+  - name: walk_ff_start_180_R_003__A060
+    file: walk_ff_start_180_R_003__A060.npz
+  - name: dance1_subject1
+    file: dance1_subject1.npz
+  - name: dance2_subject3
+    file: dance2_subject3.npz
+  - name: fight1_subject2
+    file: fight1_subject2.npz
+default: walk1_subject1

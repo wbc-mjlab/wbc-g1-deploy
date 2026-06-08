@@ -63,7 +63,7 @@ FSM:
     policy_dir: config/policy/wbc
     clips_dir: config/clips
     clips_manifest: manifest.yaml
-    clip_next: RB + right.on_pressed
-    clip_prev: RB + left.on_pressed
+    clip_next: RT + right.on_pressed
+    clip_prev: RT + left.on_pressed
     time_start: 0.0
     time_end: 1000.0

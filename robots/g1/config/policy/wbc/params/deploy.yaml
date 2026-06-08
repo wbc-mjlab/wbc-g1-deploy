@@ -32,35 +32,35 @@ observations:
     scale: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
       1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
       1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-    history_length: 10
+    history_length: 1
   base_ang_vel:
     params: {}
     clip: null
     scale: [1.0, 1.0, 1.0]
-    history_length: 10
+    history_length: 1
   projected_gravity:
     params: {}
     clip: null
     scale: [1.0, 1.0, 1.0]
-    history_length: 10
+    history_length: 1
   joint_pos_rel:
     params: {}
     clip: null
     scale: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
       1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-    history_length: 10
+    history_length: 1
   joint_vel_rel:
     params: {}
     clip: null
     scale: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
       1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-    history_length: 10
+    history_length: 1
   last_action:
     params: {}
     clip: null
     scale: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
       1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
-    history_length: 10
+    history_length: 1
 wbc_tracking:
   anchor_body_name: torso_link
   env_origin_z: 0.0
@@ -68,7 +68,7 @@ wbc_tracking:
   wbc_command_dim: 39
   actor_observation_names: &id001 [command, base_ang_vel, projected_gravity, joint_pos,
     joint_vel, actions]
-  actor_history_length: 10
+  actor_history_length: 1
   robot_id: g1
   action_mode: reference_residual
   training_observation_names: *id001

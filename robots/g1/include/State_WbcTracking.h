@@ -7,6 +7,7 @@
 
 #include <functional>
 #include <memory>
+#include <mutex>
 
 
 class State_WbcTracking : public FSMState
@@ -40,6 +41,7 @@ private:
 
     std::function<bool(const unitree::common::UnitreeJoystick&)> clip_next_fn_;
     std::function<bool(const unitree::common::UnitreeJoystick&)> clip_prev_fn_;
+    std::mutex tracking_mtx_;
 };
 
 
