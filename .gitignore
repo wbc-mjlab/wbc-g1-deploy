@@ -1,0 +1,10 @@
+build/
+log/
+*.o
+*.a
+.DS_Store
+__pycache__/
+*.pyc
+.pytest_cache/
+config/clips/*.npz
+!config/clips/manifest.yaml

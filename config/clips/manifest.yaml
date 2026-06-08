@@ -1,0 +1,25 @@
+# Motion clips (shared WBC policy). Register with tools/deploy.py add-clip
+clips:
+  - name: dance_01
+    file: dance_01.npz
+  - name: dance_02
+    file: dance_02.npz
+  - name: dance_03
+    file: dance_03.npz
+  # - name: dance_04
+  #   file: dance_04.npz
+  # - name: dance_05
+  #   file: dance_05.npz
+  # - name: sit_01
+  #   file: sit_01.npz
+  # - name: getup_01
+  #   file: getup_01.npz
+  - name: walk_01
+    file: walk_01.npz
+  - name: walk_02
+    file: walk_02.npz
+  - name: hello_01
+    file: hello_01.npz
+  # - name: squat_01
+  #   file: squat_01.npz
+default: hello_01
