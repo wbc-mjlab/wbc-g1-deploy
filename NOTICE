@@ -5,7 +5,7 @@ Files under include/, thirdparty/cnpy/, and portions of the FSM/isaaclab
 structure retain the original Unitree license headers where present.
 
 WBC-specific additions:
-  robots/g1/src/State_WbcTracking.cpp
-  robots/g1/include/State_WbcTracking.h
-  export/
+  src/State_WbcTracking.cpp
+  include/State_WbcTracking.h
+  tools/deploy.py
   README.md

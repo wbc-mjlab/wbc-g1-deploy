@@ -1,6 +1,6 @@
 # wbc_g1_deploy
 
-Reference **G1** real-robot deploy for [wbc_mjlab](../wbc_mjlab). **One policy, many trajectories** — swap NPZ clips at runtime.
+G1 real-robot deploy for [wbc_mjlab](../wbc_mjlab). **One policy, many trajectories** — swap NPZ clips at runtime.
 
 - **One policy** (`config/policy/wbc/`) — same WBC tracker for all motions
 - **Many clips** (`config/clips/`) — switch at runtime
@@ -12,21 +12,25 @@ Future: DDS trajectory + controller split — [docs/architecture.md](docs/archit
 
 ```
 wbc_g1_deploy/
-  include/                 # isaaclab + FSM
-  robots/g1/
-    wbc_g1_ctrl            # built binary
-    config/policy/wbc/     # ONNX + wbc_tracking_params.yaml
-    config/policy_defaults.yaml
-    config/clips/
-  export/                  # training → deploy conversion
+  CMakeLists.txt
+  main.cpp
+  src/                     # G1 controller (WBC tracking, motion clips)
+  include/                 # FSM + isaaclab runtime
+  config/
+    config.yaml            # FSM + joystick
+    policy_defaults.yaml   # real-robot PD gains
+    policy/wbc/params/     # policy.onnx + config.yaml
+    clips/                 # motion NPZ library
+  tools/deploy.py          # pack policy, register clips
+  scripts/bootstrap_thirdparty.sh
 ```
 
 ## Prerequisites
 
 1. Train a policy in **wbc_mjlab** (e.g. `Wbc-G1` with actor history 10, or `Wbc-G1-ZEST` with history 1).
 2. Checkpoint folder must contain:
-   - `params/latest.onnx` (or `params/policy.onnx`)
-   - `params/wbc_tracking_params.yaml` (written on checkpoint save, or export manually)
+   - `params/policy.onnx`
+   - `params/config.yaml` (written on checkpoint save, or export manually)
 3. **unitree_sdk2** installed (provides Unitree DDS headers + Cyclone DDS libs).
 4. **ONNX Runtime** bundles under `thirdparty/` (see [Build](#build)).
 5. On the robot: DDS network interface (e.g. `eth0`).
@@ -80,14 +84,14 @@ Checkpoint example:
 ```text
 logs/rsl_rl/wbc_g1/<timestamp>/
   model_<iter>.pt
-  params/latest.onnx
-  params/wbc_tracking_params.yaml
+  params/policy.onnx
+  params/config.yaml
 ```
 
-If `wbc_tracking_params.yaml` is missing, regenerate from the task:
+If `config.yaml` is missing, regenerate from the task:
 
 ```bash
-wbc-mjlab-export-tracking-params --task Wbc-G1 --out /tmp/wbc_tracking_params.yaml
+wbc-mjlab-export-tracking-params --task Wbc-G1 --out /tmp/config.yaml
 ```
 
 ### 2. Pack policy bundle
@@ -95,31 +99,12 @@ wbc-mjlab-export-tracking-params --task Wbc-G1 --out /tmp/wbc_tracking_params.ya
 From **wbc_g1_deploy**:
 
 ```bash
-python export/pack_policy_bundle.py \
-  --checkpoint ../wbc_mjlab/logs/rsl_rl/wbc_g1/<run-dir> \
-  --out robots/g1/config/policy/wbc
+python tools/deploy.py pack \
+  --checkpoint ../wbc_mjlab/logs/rsl_rl/wbc_g1/<run-dir>
 ```
 
-This copies `params/wbc_tracking_params.yaml` and `params/latest.onnx` as-is. At runtime,
-`wbc_g1_ctrl` converts training params to the internal deploy layout in C++ (no manual
-`deploy.yaml` step required).
-
-Optional: also write `params/deploy.yaml` for inspection:
-
-```bash
-python export/pack_policy_bundle.py \
-  --checkpoint ../wbc_mjlab/logs/rsl_rl/wbc_g1/<run-dir> \
-  --out robots/g1/config/policy/wbc \
-  --write-deploy-yaml
-```
-
-Manual convert only:
-
-```bash
-python export/convert_tracking_params.py \
-  --params ../wbc_mjlab/logs/rsl_rl/wbc_g1/<run>/params/wbc_tracking_params.yaml \
-  --out robots/g1/config/policy/wbc/params/deploy.yaml
-```
+This copies `params/config.yaml` and `params/policy.onnx` into `config/policy/wbc/`.
+At runtime, `wbc_g1_ctrl` converts training params to the internal deploy layout in C++.
 
 ### 3. Add motion clips
 
@@ -128,10 +113,9 @@ metadata fields (`joint_names`, `robot`) are ignored; anchor body index uses the
 G1 body list when `body_names` is absent.
 
 ```bash
-python export/add_clip.py \
+python tools/deploy.py add-clip \
   --motion-file ../wbc_mjlab/data/g1/lafan/npz/walk1_subject1.npz \
   --name walk \
-  --clips-dir robots/g1/config/clips \
   --set-default
 ```
 
@@ -146,7 +130,6 @@ Install ONNX Runtime if needed:
 Build (x86_64 for sim/dev machine, aarch64 on G1 onboard PC):
 
 ```bash
-cd robots/g1
 rm -rf build && mkdir build && cd build
 cmake ..
 make -j
@@ -163,7 +146,7 @@ make -j
 ### 5. Run on robot
 
 ```bash
-cd robots/g1/build
+cd build
 ./wbc_g1_ctrl eth0
 ```
 
@@ -181,12 +164,11 @@ Replace `eth0` with your DDS network interface.
 
 ## Training → deploy mapping
 
-[wbc_mjlab](../wbc_mjlab) writes `wbc_tracking_params_v1`. `wbc_g1_ctrl` loads it directly and
-maps it to the internal deploy layout (same rules as `export/convert_tracking_params.py`).
-Legacy `params/deploy.yaml` still works if present.
+[wbc_mjlab](../wbc_mjlab) writes `wbc_tracking_params_v1`. `wbc_g1_ctrl` loads `params/config.yaml`
+and maps it to the internal deploy layout in C++. Legacy `params/deploy.yaml` still works if present.
 
-| Training (`wbc_tracking_params.yaml`) | Deploy (`deploy.yaml`) |
-|---------------------------------------|-------------------------|
+| Training (`config.yaml`) | Deploy (internal) |
+|--------------------------|-------------------|
 | `action.action_mode: reference_residual` | `actions.ReferenceJointPositionAction` |
 | `action.action_mode: default_relative` | `actions.JointPositionAction` |
 | `tracking.actor_history_length: N` | `history_length: N` on every observation term |
@@ -200,14 +182,4 @@ Legacy fields still work: `action.type`, `tracking.action_mode` (without `action
 
 **History ordering:** mjlab stacks observations **term-major** (`[cmd×N, ang_vel×N, …]`). Deploy uses per-term `history_length` with `use_gym_history: false` (default) — do not enable `use_gym_history` for WBC policies trained in mjlab.
 
-**PD gains:** training stiffness/damping are simulation values. `policy_defaults.yaml` supplies real-robot PD and joint SDK order when packing.
-
-## Verify conversion
-
-```bash
-python -m unittest export.test_convert_tracking_params
-```
-
-## export/ scripts
-
-See [export/README.md](export/README.md).
+**PD gains:** training stiffness/damping are simulation values. `config/policy_defaults.yaml` supplies real-robot PD and joint SDK order.

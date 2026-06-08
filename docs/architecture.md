@@ -5,7 +5,7 @@
 `wbc_g1_ctrl` on the G1 onboard PC:
 
 1. **FSM** — Passive / FixStand / Wbc_Tracking  
-2. **Policy** — ONNX in `config/policy/wbc/exported/`  
+2. **Policy** — ONNX in `config/policy/wbc/params/`  
 3. **Clips** — NPZ library in `config/clips/`  
 4. **Reference** — WBC command vector + `q_ref` from active clip @ 50 Hz  
 

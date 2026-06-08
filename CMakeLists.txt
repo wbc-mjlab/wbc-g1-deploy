@@ -3,7 +3,7 @@ project(wbc_g1_controller)
 
 set(CMAKE_CXX_STANDARD 17)
 
-get_filename_component(REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../.." ABSOLUTE)
+set(REPO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}")
 
 find_package(Boost REQUIRED COMPONENTS program_options)
 find_package(yaml-cpp REQUIRED)
@@ -35,7 +35,6 @@ endif()
 
 include_directories(
   /usr/include/eigen3
-  ${CMAKE_CURRENT_SOURCE_DIR}/include
   ${REPO_ROOT}/include
   ${ONNXRUNTIME_DIR}/include
   ${REPO_ROOT}/thirdparty/cnpy
@@ -56,7 +55,7 @@ link_libraries(
   ZLIB::ZLIB
 )
 
-file(GLOB TRACKING_SRC ${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp)
+file(GLOB TRACKING_SRC ${REPO_ROOT}/src/*.cpp)
 add_library(${PROJECT_NAME}_lib ${TRACKING_SRC})
 link_libraries(${PROJECT_NAME}_lib)
 

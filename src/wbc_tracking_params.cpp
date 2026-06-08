@@ -10,7 +10,8 @@
 namespace wbc_deploy {
 namespace {
 
-constexpr const char* kTrainingParams = "wbc_tracking_params.yaml";
+constexpr const char* kTrainingParams = "config.yaml";
+constexpr const char* kLegacyTrainingParams = "wbc_tracking_params.yaml";
 constexpr const char* kDeployParams = "deploy.yaml";
 
 YAML::Node load_yaml_file(const std::filesystem::path& path)
@@ -29,13 +30,12 @@ YAML::Node load_yaml_file(const std::filesystem::path& path)
   return YAML::Load(text);
 }
 
-YAML::Node load_robot_defaults(const std::filesystem::path& policy_dir, const std::string& robot_id)
+YAML::Node load_policy_defaults(const std::filesystem::path& policy_dir)
 {
   const auto defaults_path = policy_dir.parent_path().parent_path() / "policy_defaults.yaml";
   if (std::filesystem::exists(defaults_path)) {
     return load_yaml_file(defaults_path);
   }
-  (void)robot_id;
   return YAML::Node(YAML::NodeType::Map);
 }
 
@@ -200,15 +200,20 @@ YAML::Node tracking_params_to_deploy(const YAML::Node& doc, const YAML::Node& de
 YAML::Node load_policy_config(const std::filesystem::path& policy_dir)
 {
   const auto training_path = policy_dir / "params" / kTrainingParams;
+  const auto legacy_training_path = policy_dir / "params" / kLegacyTrainingParams;
   const auto deploy_path = policy_dir / "params" / kDeployParams;
 
+  const std::filesystem::path* params_path = nullptr;
   if (std::filesystem::exists(training_path)) {
-    const YAML::Node training = load_yaml_file(training_path);
-    const std::string robot_id = training["robot_id"]
-      ? training["robot_id"].as<std::string>()
-      : "g1";
-    const YAML::Node defaults = load_robot_defaults(policy_dir, robot_id);
-    spdlog::info("Loaded policy config from {}", training_path.string());
+    params_path = &training_path;
+  } else if (std::filesystem::exists(legacy_training_path)) {
+    params_path = &legacy_training_path;
+  }
+
+  if (params_path != nullptr) {
+    const YAML::Node training = load_yaml_file(*params_path);
+    const YAML::Node defaults = load_policy_defaults(policy_dir);
+    spdlog::info("Loaded policy config from {}", params_path->string());
     return tracking_params_to_deploy(training, defaults);
   }
 
@@ -219,15 +224,15 @@ YAML::Node load_policy_config(const std::filesystem::path& policy_dir)
 
   throw std::runtime_error(
     "No policy config in " + policy_dir.string()
-    + " (expected params/" + kTrainingParams + " or params/" + kDeployParams + ")");
+    + " (expected params/" + kTrainingParams + ", params/" + kLegacyTrainingParams
+    + ", or params/" + kDeployParams + ")");
 }
 
 std::filesystem::path resolve_onnx_path(const std::filesystem::path& policy_dir)
 {
   const std::vector<std::filesystem::path> candidates = {
-    policy_dir / "params" / "latest.onnx",
-    policy_dir / "exported" / "policy.onnx",
     policy_dir / "params" / "policy.onnx",
+    policy_dir / "params" / "latest.onnx",
   };
   for (const auto& path : candidates) {
     if (std::filesystem::exists(path)) {
