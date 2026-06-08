@@ -72,4 +72,4 @@ tracking:
   wbc_command_dim: 39
   actor_observation_names: [command, base_ang_vel, projected_gravity, joint_pos, joint_vel,
     actions]
-  actor_history_length: 1
+  actor_history_length: 10

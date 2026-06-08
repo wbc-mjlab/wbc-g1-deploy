@@ -15,7 +15,7 @@ wbc_g1_deploy/
   include/                 # isaaclab + FSM
   robots/g1/
     wbc_g1_ctrl            # built binary
-    config/policy/wbc/     # ONNX + deploy.yaml
+    config/policy/wbc/     # ONNX + wbc_tracking_params.yaml
     config/policy_defaults.yaml
     config/clips/
   export/                  # training → deploy conversion
@@ -100,11 +100,18 @@ python export/pack_policy_bundle.py \
   --out robots/g1/config/policy/wbc
 ```
 
-This copies ONNX and builds `params/deploy.yaml` from training params. The script prints:
+This copies `params/wbc_tracking_params.yaml` and `params/latest.onnx` as-is. At runtime,
+`wbc_g1_ctrl` converts training params to the internal deploy layout in C++ (no manual
+`deploy.yaml` step required).
 
-- **action** — C++ action class (`ReferenceJointPositionAction` for WBC reference-residual policies)
-- **action_mode** — semantic mode from training (`reference_residual` / `default_relative`)
-- **actor_history_length** — observation stack depth (must match the trained policy, e.g. `10` for `Wbc-G1`)
+Optional: also write `params/deploy.yaml` for inspection:
+
+```bash
+python export/pack_policy_bundle.py \
+  --checkpoint ../wbc_mjlab/logs/rsl_rl/wbc_g1/<run-dir> \
+  --out robots/g1/config/policy/wbc \
+  --write-deploy-yaml
+```
 
 Manual convert only:
 
@@ -116,11 +123,13 @@ python export/convert_tracking_params.py \
 
 ### 3. Add motion clips
 
-Clips are WBC NPZ files (`joint_pos`, `body_pos_w`, `body_quat_w`, …) from wbc_mjlab conversion:
+Clips are wbc_mjlab NPZ exports (`joint_pos`, `body_pos_w`, `body_quat_w`, …). Object
+metadata fields (`joint_names`, `robot`) are ignored; anchor body index uses the built-in
+G1 body list when `body_names` is absent.
 
 ```bash
 python export/add_clip.py \
-  --motion-file /path/to/walk.npz \
+  --motion-file ../wbc_mjlab/data/g1/lafan/npz/walk1_subject1.npz \
   --name walk \
   --clips-dir robots/g1/config/clips \
   --set-default
@@ -131,7 +140,7 @@ python export/add_clip.py \
 Install ONNX Runtime if needed:
 
 ```bash
-./scripts/bootstrap_thirdparty.sh /path/to/unitree_rl_mjlab/deploy
+./scripts/bootstrap_thirdparty.sh
 ```
 
 Build (x86_64 for sim/dev machine, aarch64 on G1 onboard PC):
@@ -167,12 +176,14 @@ Replace `eth0` with your DDS network interface.
 | FixStand | L2 + Up |
 | Tracking | R2 + A |
 | Passive | L2 + B |
-| Next clip | RB + D-pad right |
-| Prev clip | RB + D-pad left |
+| Next clip | RT + D-pad right |
+| Prev clip | RT + D-pad left |
 
 ## Training → deploy mapping
 
-[wbc_mjlab](../wbc_mjlab) writes `wbc_tracking_params_v1`. This repo converts it to runtime `deploy.yaml`.
+[wbc_mjlab](../wbc_mjlab) writes `wbc_tracking_params_v1`. `wbc_g1_ctrl` loads it directly and
+maps it to the internal deploy layout (same rules as `export/convert_tracking_params.py`).
+Legacy `params/deploy.yaml` still works if present.
 
 | Training (`wbc_tracking_params.yaml`) | Deploy (`deploy.yaml`) |
 |---------------------------------------|-------------------------|

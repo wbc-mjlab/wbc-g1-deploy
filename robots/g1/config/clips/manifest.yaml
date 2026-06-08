@@ -1,17 +1,25 @@
 # Motion clips (shared WBC policy). Register with export/add_clip.py
 clips:
-  - name: walk1_subject1
-    file: walk1_subject1.npz
-  - name: walk_ff_start_180_R_001__A176_M
-    file: walk_ff_start_180_R_001__A176_M.npz
-  - name: walk_ff_start_180_R_001__A256_M
-    file: walk_ff_start_180_R_001__A256_M.npz
-  - name: walk_ff_start_180_R_003__A060
-    file: walk_ff_start_180_R_003__A060.npz
-  - name: dance1_subject1
-    file: dance1_subject1.npz
-  - name: dance2_subject3
-    file: dance2_subject3.npz
-  - name: fight1_subject2
-    file: fight1_subject2.npz
-default: walk1_subject1
+  - name: dance_01
+    file: dance_01.npz
+  - name: dance_02
+    file: dance_02.npz
+  - name: dance_03
+    file: dance_03.npz
+  - name: dance_04
+    file: dance_04.npz
+  - name: dance_05
+    file: dance_05.npz
+  # - name: sit_01
+  #   file: sit_01.npz
+  # - name: getup_01
+  #   file: getup_01.npz
+  - name: walk_01
+    file: walk_01.npz
+  - name: walk_02
+    file: walk_02.npz
+  - name: pose_01
+    file: pose_01.npz
+  - name: squat_01
+    file: squat_01.npz
+default: hello_01

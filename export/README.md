@@ -4,9 +4,9 @@ Tools that bridge [wbc_mjlab](../../wbc_mjlab) training artifacts to `wbc_g1_ctr
 
 | Script | Role |
 |--------|------|
-| `convert_tracking_params.py` | `wbc_tracking_params.yaml` → `deploy.yaml` |
-| `pack_policy_bundle.py` | Checkpoint ONNX + convert → `config/policy/wbc/` |
-| `add_clip.py` | NPZ clips → `config/clips/manifest.yaml` |
+| `convert_tracking_params.py` | `wbc_tracking_params.yaml` → `deploy.yaml` (optional; runtime converts in C++) |
+| `pack_policy_bundle.py` | Copy checkpoint `params/` → `config/policy/wbc/` |
+| `add_clip.py` | Copy wbc_mjlab NPZ → `config/clips/manifest.yaml` |
 | `test_convert_tracking_params.py` | Unit tests for the converter |
 
 ## `wbc_tracking_params_v1` (training)
@@ -27,9 +27,18 @@ tracking:
   actor_observation_names: [...]
 ```
 
-## `deploy.yaml` (runtime)
+## Runtime config
 
-Generated for `ManagerBasedRLEnv` + ONNX runner:
+`wbc_g1_ctrl` reads `params/wbc_tracking_params.yaml` and converts it in C++ to the
+`ManagerBasedRLEnv` layout. Optionally generate `deploy.yaml` for inspection:
+
+```bash
+python export/pack_policy_bundle.py --checkpoint <run> --out <policy_dir> --write-deploy-yaml
+```
+
+### `deploy.yaml` (internal / optional)
+
+Generated layout for `ManagerBasedRLEnv` + ONNX runner:
 
 ```yaml
 actions:

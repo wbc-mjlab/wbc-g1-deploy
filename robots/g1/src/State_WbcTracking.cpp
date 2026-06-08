@@ -1,7 +1,8 @@
 #include "State_WbcTracking.h"
 #include "MotionClipLibrary.h"
-#include "g1_body_names.h"
+#include "motion_npz.h"
 #include "unitree_articulation.h"
+#include "wbc_tracking_params.h"
 #include "unitree_joystick_dsl.hpp"
 #include "isaaclab/envs/mdp/observations/observations.h"
 #include "isaaclab/envs/mdp/actions/joint_actions.h"
@@ -21,45 +22,6 @@ std::array<float, 3> quatApplyInverse(
   return {out.x(), out.y(), out.z()};
 }
 
-int resolve_anchor_body_index(const cnpy::npz_t& npz, const std::string& anchor_name)
-{
-  auto match_names = [&](const auto& names) -> int {
-    for (size_t i = 0; i < names.size(); ++i) {
-      if (names[i] == anchor_name) {
-        return static_cast<int>(i);
-      }
-    }
-    return -1;
-  };
-
-  if (npz.find("body_names") != npz.end()) {
-    const auto names_arr = npz.at("body_names");
-    const size_t n = names_arr.shape[0];
-    for (size_t i = 0; i < n; ++i) {
-      std::string name(
-        names_arr.data<char>() + i * names_arr.word_size,
-        names_arr.word_size);
-      while (!name.empty() && name.back() == '\0') {
-        name.pop_back();
-      }
-      if (name == anchor_name) {
-        return static_cast<int>(i);
-      }
-    }
-  }
-
-  const int fallback = match_names(G1_FULL_BODY_NAMES);
-  if (fallback >= 0) {
-    spdlog::warn(
-      "NPZ missing body_names; using built-in G1 body list for anchor '{}'",
-      anchor_name);
-    return fallback;
-  }
-
-  spdlog::error("Anchor body '{}' not found in motion clip", anchor_name);
-  return 0;
-}
-
 }  // namespace
 
 WbcMotionLoader::WbcMotionLoader(
@@ -68,14 +30,16 @@ WbcMotionLoader::WbcMotionLoader(
   float step_dt)
 : dt(step_dt)
 {
-  cnpy::npz_t npz = cnpy::npz_load(motion_file);
-  anchor_body_index_ = resolve_anchor_body_index(npz, anchor_body_name);
+  const MotionNpzArrays arrays = load_motion_npz(motion_file);
+  anchor_body_index_ = resolve_anchor_body_index(
+    arrays.has_body_names ? &arrays.body_names : nullptr,
+    anchor_body_name);
 
-  const auto body_pos_w = npz["body_pos_w"];
-  const auto body_quat_w = npz["body_quat_w"];
-  const auto body_lin_vel_w = npz["body_lin_vel_w"];
-  const auto body_ang_vel_w = npz["body_ang_vel_w"];
-  const auto joint_pos = npz["joint_pos"];
+  const auto& body_pos_w = arrays.body_pos_w;
+  const auto& body_quat_w = arrays.body_quat_w;
+  const auto& body_lin_vel_w = arrays.body_lin_vel_w;
+  const auto& body_ang_vel_w = arrays.body_ang_vel_w;
+  const auto& joint_pos = arrays.joint_pos;
 
   const size_t num_frames_npz = body_pos_w.shape[0];
   const int num_bodies = static_cast<int>(body_pos_w.shape[1]);
@@ -267,7 +231,7 @@ State_WbcTracking::State_WbcTracking(int state_mode, std::string state_string)
   auto cfg = param::config["FSM"][state_string];
   auto policy_dir = param::parser_policy_dir(cfg["policy_dir"].as<std::string>());
 
-  const auto deploy = YAML::LoadFile(policy_dir / "params" / "deploy.yaml");
+  const YAML::Node deploy = wbc_deploy::load_policy_config(policy_dir);
   const float step_dt = deploy["step_dt"].as<float>();
   std::string anchor_body = "torso_link";
   if (deploy["wbc_tracking"] && deploy["wbc_tracking"]["anchor_body_name"]) {
@@ -289,10 +253,9 @@ State_WbcTracking::State_WbcTracking(int state_mode, std::string state_string)
 
   auto articulation = std::make_shared<unitree::BaseArticulation<LowState_t::SharedPtr>>(FSMState::lowstate);
 
-  env = std::make_unique<isaaclab::ManagerBasedRLEnv>(
-    YAML::LoadFile(policy_dir / "params" / "deploy.yaml"),
-    articulation);
-  env->alg = std::make_unique<isaaclab::OrtRunner>(policy_dir / "exported" / "policy.onnx");
+  env = std::make_unique<isaaclab::ManagerBasedRLEnv>(deploy, articulation);
+  env->alg = std::make_unique<isaaclab::OrtRunner>(
+    wbc_deploy::resolve_onnx_path(policy_dir).string());
 
   if (env->cfg["wbc_tracking"]) {
     env_origin_z_ = env->cfg["wbc_tracking"]["env_origin_z"].as<float>(0.0f);
