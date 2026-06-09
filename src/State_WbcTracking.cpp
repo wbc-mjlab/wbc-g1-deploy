@@ -1,6 +1,7 @@
 #include "State_WbcTracking.h"
 #include "MotionClipLibrary.h"
 #include "motion_npz.h"
+#include "motion_reference_obs.h"
 #include "unitree_articulation.h"
 #include "wbc_tracking_params.h"
 #include "unitree_joystick_dsl.hpp"
@@ -40,6 +41,7 @@ WbcMotionLoader::WbcMotionLoader(
   const auto& body_lin_vel_w = arrays.body_lin_vel_w;
   const auto& body_ang_vel_w = arrays.body_ang_vel_w;
   const auto& joint_pos = arrays.joint_pos;
+  const auto& joint_vel = arrays.joint_vel;
 
   const size_t num_frames_npz = body_pos_w.shape[0];
   const int num_bodies = static_cast<int>(body_pos_w.shape[1]);
@@ -69,10 +71,13 @@ WbcMotionLoader::WbcMotionLoader(
       ang_base[ab * 3 + 0], ang_base[ab * 3 + 1], ang_base[ab * 3 + 2]);
 
     Eigen::VectorXf jp(num_joints);
+    Eigen::VectorXf jv(num_joints);
     for (int j = 0; j < num_joints; ++j) {
       jp[j] = joint_pos.data<float>()[i * num_joints + j];
+      jv[j] = joint_vel.data<float>()[i * num_joints + j];
     }
     dof_positions_.push_back(jp);
+    dof_velocities_.push_back(jv);
   }
 
   num_frames = static_cast<int>(num_frames_npz);
@@ -123,28 +128,59 @@ Eigen::VectorXf WbcMotionLoader::joint_pos() const
   return dof_positions_[frame];
 }
 
-std::vector<float> WbcMotionLoader::wbc_reference(float env_origin_z) const
+float WbcMotionLoader::ref_base_height(float env_origin_z) const
+{
+  return anchor_pos_w().z() - env_origin_z;
+}
+
+std::vector<float> WbcMotionLoader::ref_base_lin_vel_b() const
 {
   const Eigen::Quaternionf q = anchor_quat_w();
   const std::array<float, 3> lin_w = {
     anchor_lin_vel_w().x(), anchor_lin_vel_w().y(), anchor_lin_vel_w().z()};
+  const auto lin_b = quatApplyInverse(q, lin_w);
+  return {lin_b[0], lin_b[1], lin_b[2]};
+}
+
+std::vector<float> WbcMotionLoader::ref_base_ang_vel_b() const
+{
+  const Eigen::Quaternionf q = anchor_quat_w();
   const std::array<float, 3> ang_w = {
     anchor_ang_vel_w().x(), anchor_ang_vel_w().y(), anchor_ang_vel_w().z()};
-  const auto lin_b = quatApplyInverse(q, lin_w);
   const auto ang_b = quatApplyInverse(q, ang_w);
-  const auto grav_b = quatApplyInverse(q, kGravityW);
+  return {ang_b[0], ang_b[1], ang_b[2]};
+}
 
-  std::vector<float> cmd;
-  cmd.reserve(10 + joint_pos().size());
-  cmd.push_back(anchor_pos_w().z() - env_origin_z);
-  cmd.insert(cmd.end(), lin_b.begin(), lin_b.end());
-  cmd.insert(cmd.end(), ang_b.begin(), ang_b.end());
-  cmd.insert(cmd.end(), grav_b.begin(), grav_b.end());
+std::vector<float> WbcMotionLoader::ref_gravity_b() const
+{
+  const Eigen::Quaternionf q = anchor_quat_w();
+  const auto grav_b = quatApplyInverse(q, kGravityW);
+  return {grav_b[0], grav_b[1], grav_b[2]};
+}
+
+std::vector<float> WbcMotionLoader::ref_joint_pos() const
+{
   const Eigen::VectorXf jp = joint_pos();
+  std::vector<float> out(jp.size());
   for (int i = 0; i < jp.size(); ++i) {
-    cmd.push_back(jp[i]);
+    out[i] = jp[i];
   }
-  return cmd;
+  return out;
+}
+
+std::vector<float> WbcMotionLoader::ref_joint_vel() const
+{
+  const Eigen::VectorXf jv = dof_velocities_[frame];
+  std::vector<float> out(jv.size());
+  for (int i = 0; i < jv.size(); ++i) {
+    out[i] = jv[i];
+  }
+  return out;
+}
+
+std::vector<float> WbcMotionLoader::wbc_reference(float env_origin_z) const
+{
+  return wbc_deploy::motion_reference_stack(*this, env_origin_z);
 }
 
 std::shared_ptr<WbcMotionLoader> State_WbcTracking::motion = nullptr;
@@ -153,11 +189,33 @@ std::shared_ptr<WbcMotionLoader> State_WbcTracking::motion = nullptr;
 namespace isaaclab {
 namespace mdp {
 
+namespace {
+
+float motion_env_origin_z(ManagerBasedRLEnv* env)
+{
+  return env->cfg["wbc_tracking"]["env_origin_z"].as<float>(0.0f);
+}
+
+#define REGISTER_MOTION_REF(name) \
+  REGISTER_OBSERVATION(name) \
+  { \
+    return wbc_deploy::motion_reference_observation( \
+      *State_WbcTracking::motion, #name, motion_env_origin_z(env)); \
+  }
+
+}  // namespace
+
+REGISTER_MOTION_REF(ref_base_height)
+REGISTER_MOTION_REF(ref_base_lin_vel_b)
+REGISTER_MOTION_REF(ref_base_ang_vel_b)
+REGISTER_MOTION_REF(ref_gravity_b)
+REGISTER_MOTION_REF(ref_joint_pos)
+REGISTER_MOTION_REF(ref_joint_vel)
+
 REGISTER_OBSERVATION(command)
 {
-  auto loader = State_WbcTracking::motion;
-  const float z0 = env->cfg["wbc_tracking"]["env_origin_z"].as<float>(0.0f);
-  return loader->wbc_reference(z0);
+  return wbc_deploy::motion_reference_stack(
+    *State_WbcTracking::motion, motion_env_origin_z(env));
 }
 
 REGISTER_OBSERVATION(motion_anchor_pos_b)

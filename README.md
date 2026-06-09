@@ -167,8 +167,17 @@ Replace `eth0` with your DDS network interface.
 [wbc_mjlab](../wbc_mjlab) writes `wbc_tracking_params_v1`. `wbc_g1_ctrl` loads `params/config.yaml`
 and maps it to the internal deploy layout in C++. Legacy `params/deploy.yaml` still works if present.
 
-| Training (`config.yaml`) | Deploy (internal) |
-|--------------------------|-------------------|
+| Training reference terms | Deploy obs handlers |
+|--------------------------|---------------------|
+| `ref_base_height` | `ref_base_height` |
+| `ref_base_lin_vel_b` | `ref_base_lin_vel_b` |
+| `ref_base_ang_vel_b` | `ref_base_ang_vel_b` |
+| `ref_gravity_b` | `ref_gravity_b` |
+| `ref_joint_pos` | `ref_joint_pos` |
+| Legacy `command` (stacked) | `command` |
+
+| Other training fields | Deploy (internal) |
+|-----------------------|---------------------|
 | `action.action_mode: reference_residual` | `actions.ReferenceJointPositionAction` |
 | `action.action_mode: default_relative` | `actions.JointPositionAction` |
 | `tracking.actor_history_length: N` | `history_length: N` on every observation term |
@@ -176,7 +185,8 @@ and maps it to the internal deploy layout in C++. Legacy `params/deploy.yaml` st
 | `actor_observations.joint_vel` | `observations.joint_vel_rel` |
 | `actor_observations.actions` | `observations.last_action` |
 | `policy_step_dt` | `step_dt` |
-| `tracking.wbc_command_dim` | `wbc_tracking.wbc_command_dim` |
+| `tracking.reference_observation_names` | Modular motion-reference obs terms (deploy validates + dispatches) |
+| `tracking.wbc_command_dim` | Sum of reference term dims (legacy: `10 + num_joints` for `command`) |
 
 Legacy fields still work: `action.type`, `tracking.action_mode` (without `action.action_mode`).
 
