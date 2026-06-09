@@ -24,6 +24,12 @@ public:
   Eigen::Vector3f anchor_lin_vel_w() const;
   Eigen::Vector3f anchor_ang_vel_w() const;
   Eigen::VectorXf joint_pos() const;
+  float ref_base_height(float env_origin_z) const;
+  std::vector<float> ref_base_lin_vel_b() const;
+  std::vector<float> ref_base_ang_vel_b() const;
+  std::vector<float> ref_gravity_b() const;
+  std::vector<float> ref_joint_pos() const;
+  std::vector<float> ref_joint_vel() const;
   std::vector<float> wbc_reference(float env_origin_z) const;
 
   float dt;
@@ -38,5 +44,6 @@ private:
   std::vector<Eigen::Vector3f> anchor_lin_vels_;
   std::vector<Eigen::Vector3f> anchor_ang_vels_;
   std::vector<Eigen::VectorXf> dof_positions_;
+  std::vector<Eigen::VectorXf> dof_velocities_;
   Eigen::Matrix3f world_to_init_;
 };

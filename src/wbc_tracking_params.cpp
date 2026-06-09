@@ -1,5 +1,7 @@
 #include "wbc_tracking_params.h"
 
+#include "motion_reference_obs.h"
+
 #include <spdlog/spdlog.h>
 
 #include <fstream>
@@ -96,6 +98,29 @@ std::string observation_deploy_name(const std::string& training_name)
   return training_name;
 }
 
+std::vector<std::string> reference_observation_names_from_doc(const YAML::Node& doc)
+{
+  if (doc["tracking"] && doc["tracking"]["reference_observation_names"]) {
+    std::vector<std::string> names;
+    for (const auto& entry : doc["tracking"]["reference_observation_names"]) {
+      names.push_back(entry.as<std::string>());
+    }
+    return names;
+  }
+
+  std::vector<std::string> names;
+  if (!doc["actor_observations"]) {
+    return names;
+  }
+  for (const auto& entry : doc["actor_observations"]) {
+    const std::string train_name = entry.first.as<std::string>();
+    if (is_reference_observation_name(train_name)) {
+      names.push_back(train_name);
+    }
+  }
+  return names;
+}
+
 YAML::Node tracking_params_to_deploy(const YAML::Node& doc, const YAML::Node& defaults)
 {
   const std::string robot_id = doc["robot_id"]
@@ -105,6 +130,9 @@ YAML::Node tracking_params_to_deploy(const YAML::Node& doc, const YAML::Node& de
   const std::string action_mode = resolve_action_mode(doc);
   const std::string action_class = deploy_action_class(action_mode);
   const int history_length = resolve_actor_history_length(doc, defaults);
+  const std::vector<std::string> reference_obs_names =
+    reference_observation_names_from_doc(doc);
+  validate_reference_observations(reference_obs_names);
 
   YAML::Node observations(YAML::NodeType::Map);
   for (const auto& entry : doc["actor_observations"]) {
@@ -162,6 +190,13 @@ YAML::Node tracking_params_to_deploy(const YAML::Node& doc, const YAML::Node& de
   wbc_tracking["robot_id"] = robot_id;
   wbc_tracking["action_mode"] = action_mode;
   wbc_tracking["actor_history_length"] = history_length;
+  if (!reference_obs_names.empty()) {
+    YAML::Node ref_names(YAML::NodeType::Sequence);
+    for (const auto& name : reference_obs_names) {
+      ref_names.push_back(name);
+    }
+    wbc_tracking["reference_observation_names"] = ref_names;
+  }
   if (doc["tracking"]["actor_observation_names"]) {
     wbc_tracking["training_observation_names"] = doc["tracking"]["actor_observation_names"];
   }
