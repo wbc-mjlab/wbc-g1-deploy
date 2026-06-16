@@ -1,27 +1,67 @@
 # Motion clips (shared WBC policy). Register with tools/deploy.py add-clip
 clips:
-  - name: dance_01
-    file: dance_01.npz
-  - name: dance_02
-    file: dance_02.npz
-  - name: dance_03
-    file: dance_03.npz
-  # - name: dance_04
-  #   file: dance_04.npz
-  # - name: dance_05
-  #   file: dance_05.npz
-  - name: hello_01
-    file: hello_01.npz
-  - name: sit_01
-    file: sit_01.npz
-  - name: getup_01
-    file: getup_01.npz
-  - name: hello_02
-    file: hello_01.npz
-  - name: walk_01
-    file: walk_01.npz
-  - name: walk_02
-    file: walk_02.npz
-  # - name: squat_01
-  #   file: squat_01.npz
-default: hello_01
+  - name: dance1_subject1
+    file: dance1_subject1.npz
+  - name: dance1_subject2
+    file: dance1_subject2.npz
+  - name: dance1_subject3
+    file: dance1_subject3.npz
+  - name: dance2_subject1
+    file: dance2_subject1.npz
+  - name: dance2_subject2
+    file: dance2_subject2.npz
+  - name: dance2_subject3
+    file: dance2_subject3.npz
+  - name: dance2_subject4
+    file: dance2_subject4.npz
+  - name: dance2_subject5
+    file: dance2_subject5.npz
+  - name: fallAndGetUp1_subject1
+    file: fallAndGetUp1_subject1.npz
+  - name: fallAndGetUp1_subject4
+    file: fallAndGetUp1_subject4.npz
+  - name: fight1_subject2
+    file: fight1_subject2.npz
+  - name: fight1_subject3
+    file: fight1_subject3.npz
+  - name: fight1_subject5
+    file: fight1_subject5.npz
+  - name: fightAndSports1_subject1
+    file: fightAndSports1_subject1.npz
+  - name: fightAndSports1_subject4
+    file: fightAndSports1_subject4.npz
+  - name: jumps1_subject1
+    file: jumps1_subject1.npz
+  - name: jumps1_subject2
+    file: jumps1_subject2.npz
+  - name: jumps1_subject5
+    file: jumps1_subject5.npz
+  - name: run1_subject2
+    file: run1_subject2.npz
+  - name: run1_subject5
+    file: run1_subject5.npz
+  - name: run2_subject1
+    file: run2_subject1.npz
+  - name: run2_subject4
+    file: run2_subject4.npz
+  - name: sprint1_subject2
+    file: sprint1_subject2.npz
+  - name: sprint1_subject4
+    file: sprint1_subject4.npz
+  - name: walk1_subject1
+    file: walk1_subject1.npz
+  - name: walk1_subject2
+    file: walk1_subject2.npz
+  - name: walk1_subject5
+    file: walk1_subject5.npz
+  - name: walk2_subject1
+    file: walk2_subject1.npz
+  - name: walk2_subject3
+    file: walk2_subject3.npz
+  - name: walk2_subject4
+    file: walk2_subject4.npz
+  - name: walk3_subject3
+    file: walk3_subject3.npz
+  - name: walk3_subject4
+    file: walk3_subject4.npz
+default: walk1_subject1
