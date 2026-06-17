@@ -4,13 +4,14 @@
 #pragma once
 
 #include "FSMState.h"
-#include "LinearInterpolator.h"
+#include "FSM/fsm_pose_utils.h"
+#include "wbc_entry_mode.h"
 
 class State_FixStand : public FSMState
 {
 public:
-    State_FixStand(int state, std::string state_string = "FixStand") 
-    : FSMState(state, state_string) 
+    State_FixStand(int state, std::string state_string = "FixStand")
+    : FSMState(state, state_string)
     {
         ts_ = param::config["FSM"]["FixStand"]["ts"].as<std::vector<float>>();
         qs_ = param::config["FSM"]["FixStand"]["qs"].as<std::vector<std::vector<float>>>();
@@ -19,35 +20,17 @@ public:
 
     void enter()
     {
-        // set gain
         static auto kp = param::config["FSM"]["FixStand"]["kp"].as<std::vector<float>>();
         static auto kd = param::config["FSM"]["FixStand"]["kd"].as<std::vector<float>>();
-        for(int i(0); i < kp.size(); ++i)
-        {
-            auto & motor = lowcmd->msg_.motor_cmd()[i];
-            motor.kp() = kp[i];
-            motor.kd() = kd[i];
-            motor.dq() = motor.tau() = 0;
-        }
-
-
-        // set initial position
-        std::vector<float> q0;
-        for(int i(0); i < kp.size(); ++i) {
-            q0.push_back(lowcmd->msg_.motor_cmd()[i].q());
-        }
-        qs_[0] = q0;
-        t0_ = (double)unitree::common::GetCurrentTimeMillisecond() * 1e-3;
+        fsm_pose::applyMotorGains(kp, kd);
+        qs_[0] = fsm_pose::captureMotorPositions(kp.size());
+        t0_ = static_cast<double>(unitree::common::GetCurrentTimeMillisecond()) * 1e-3;
+        wbc_deploy::pendingWbcEntryMode() = wbc_deploy::WbcEntryMode::Standing;
     }
 
     void run()
     {
-        float t = (double)unitree::common::GetCurrentTimeMillisecond() * 1e-3 - t0_;
-        auto q = linear_interpolate(t, ts_, qs_);
-        
-        for(int i(0); i < q.size(); ++i) {
-            lowcmd->msg_.motor_cmd()[i].q() = q[i];
-        }
+        fsm_pose::runJointInterpolation(t0_, ts_, qs_);
     }
 
 private:

@@ -192,6 +192,43 @@ MotionNpzArrays load_motion_npz(const std::string& path)
   return arrays;
 }
 
+std::vector<float> load_motion_joint_pos_at(const std::string& path, size_t frame_index)
+{
+  const MotionNpzArrays arrays = load_motion_npz(path);
+  if (arrays.joint_pos.shape.size() != 2) {
+    throw std::runtime_error("joint_pos must be [T, num_joints] in " + path);
+  }
+  const size_t num_frames = arrays.joint_pos.shape[0];
+  const size_t num_joints = arrays.joint_pos.shape[1];
+  if (frame_index >= num_frames) {
+    throw std::runtime_error(
+      "Frame index " + std::to_string(frame_index) + " out of range in " + path);
+  }
+
+  std::vector<float> joint_pos(num_joints);
+  const float* base = arrays.joint_pos.data<float>() + frame_index * num_joints;
+  for (size_t j = 0; j < num_joints; ++j) {
+    joint_pos[j] = base[j];
+  }
+  return joint_pos;
+}
+
+std::filesystem::path resolve_clip_path(
+  const std::filesystem::path& clips_dir,
+  const std::string& clip_name)
+{
+  if (clip_name.find('/') != std::string::npos
+      || (clip_name.size() >= 4
+          && clip_name.compare(clip_name.size() - 4, 4, ".npz") == 0)) {
+    auto path = std::filesystem::path(clip_name);
+    if (path.is_relative()) {
+      path = clips_dir / path;
+    }
+    return path;
+  }
+  return clips_dir / (clip_name + ".npz");
+}
+
 int resolve_anchor_body_index(
   const cnpy::NpyArray* body_names,
   const std::string& anchor_name)

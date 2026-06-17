@@ -83,13 +83,30 @@ inline void load_config_file()
     }
 }
 
+inline std::filesystem::path resolve_path_under_proj(std::filesystem::path path)
+{
+    if (path.is_relative()) {
+        path = proj_dir / path;
+    }
+    return path;
+}
+
 inline std::filesystem::path resolve_policy_dir(std::filesystem::path policy_dir)
 {
-    if (policy_dir.is_relative()) {
-        policy_dir = param::proj_dir / policy_dir;
-    }
+    policy_dir = resolve_path_under_proj(std::move(policy_dir));
     spdlog::info("Policy directory: {}", policy_dir.string());
     return policy_dir;
+}
+
+inline std::string config_string(
+    const YAML::Node& node,
+    const char* key,
+    const std::string& default_value = "")
+{
+    if (node && node[key]) {
+        return node[key].as<std::string>();
+    }
+    return default_value;
 }
 
 /* ---------- Command Line Parameters ---------- */

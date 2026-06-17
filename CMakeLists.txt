@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.12)
-project(wbc_g1_controller)
+project(wbc_g1_deploy)
 
 set(CMAKE_CXX_STANDARD 17)
 
@@ -9,9 +9,6 @@ find_package(Boost REQUIRED COMPONENTS program_options)
 find_package(yaml-cpp REQUIRED)
 find_package(ZLIB REQUIRED)
 
-# unitree_sdk2 (bundles Cyclone DDS). Install from:
-#   https://github.com/unitreerobotics/unitree_sdk2
-# Default prefixes: /usr/local, /opt/unitree_robotics, ~/.local/unitree_robotics
 list(APPEND CMAKE_PREFIX_PATH
   "$ENV{UNITREE_SDK_PREFIX}/lib/cmake"
   "/opt/unitree_robotics/lib/cmake"
@@ -55,8 +52,17 @@ link_libraries(
   ZLIB::ZLIB
 )
 
-file(GLOB TRACKING_SRC ${REPO_ROOT}/src/*.cpp)
-add_library(${PROJECT_NAME}_lib ${TRACKING_SRC})
+set(WBC_LIB_SRC
+  ${REPO_ROOT}/src/MotionClipLibrary.cpp
+  ${REPO_ROOT}/src/State_WbcTracking.cpp
+  ${REPO_ROOT}/src/WbcMotionLoader.cpp
+  ${REPO_ROOT}/src/wbc_mdp_registrations.cpp
+  ${REPO_ROOT}/src/motion_npz.cpp
+  ${REPO_ROOT}/src/motion_reference_obs.cpp
+  ${REPO_ROOT}/src/wbc_tracking_params.cpp
+)
+
+add_library(${PROJECT_NAME}_lib ${WBC_LIB_SRC})
 link_libraries(${PROJECT_NAME}_lib)
 
-add_executable(wbc_g1_ctrl main.cpp)
+add_subdirectory(apps)

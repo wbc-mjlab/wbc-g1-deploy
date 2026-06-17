@@ -7,5 +7,4 @@ structure retain the original Unitree license headers where present.
 WBC-specific additions:
   src/State_WbcTracking.cpp
   include/State_WbcTracking.h
-  tools/deploy.py
   README.md

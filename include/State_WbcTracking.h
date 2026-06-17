@@ -30,17 +30,25 @@ public:
 
 private:
     void handleClipSwitch();
+    bool isPlaybackFinished() const;
+    void syncPlaybackEndToMotion();
+    void applyMotionLoader(bool reset_env);
 
     std::unique_ptr<isaaclab::ManagerBasedRLEnv> env;
     std::unique_ptr<MotionClipLibrary> clip_library_;
     std::thread policy_thread;
     bool policy_thread_running = false;
     std::array<float, 2> time_range_;
-    float env_origin_z_ = 0.0f;
-    bool has_state_estimation_ = false;
+
+    bool robot_is_up_ = true;
+    bool awaiting_clip_select_ = false;
+    bool playback_finished_ = false;
+    bool was_playback_finished_ = false;
 
     std::function<bool(const unitree::common::UnitreeJoystick&)> clip_next_fn_;
     std::function<bool(const unitree::common::UnitreeJoystick&)> clip_prev_fn_;
+    std::function<bool(const unitree::common::UnitreeJoystick&)> clip_getup_fn_;
+    std::function<bool(const unitree::common::UnitreeJoystick&)> clip_liedown_fn_;
     std::mutex tracking_mtx_;
 };
 

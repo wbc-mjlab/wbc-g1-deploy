@@ -1,6 +1,7 @@
 #include "wbc_tracking_params.h"
 
 #include "motion_reference_obs.h"
+#include "param.h"
 
 #include <spdlog/spdlog.h>
 
@@ -32,11 +33,13 @@ YAML::Node load_yaml_file(const std::filesystem::path& path)
   return YAML::Load(text);
 }
 
-YAML::Node load_policy_defaults(const std::filesystem::path& policy_dir)
+YAML::Node load_robot_defaults()
 {
-  const auto defaults_path = policy_dir.parent_path().parent_path() / "policy_defaults.yaml";
-  if (std::filesystem::exists(defaults_path)) {
-    return load_yaml_file(defaults_path);
+  for (const char* name : {"robot_defaults.yaml", "policy_defaults.yaml"}) {
+    const auto path = param::config_dir / name;
+    if (std::filesystem::exists(path)) {
+      return load_yaml_file(path);
+    }
   }
   return YAML::Node(YAML::NodeType::Map);
 }
@@ -247,7 +250,7 @@ YAML::Node load_policy_config(const std::filesystem::path& policy_dir)
 
   if (params_path != nullptr) {
     const YAML::Node training = load_yaml_file(*params_path);
-    const YAML::Node defaults = load_policy_defaults(policy_dir);
+    const YAML::Node defaults = load_robot_defaults();
     spdlog::info("Loaded policy config from {}", params_path->string());
     return tracking_params_to_deploy(training, defaults);
   }

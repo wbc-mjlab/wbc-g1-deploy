@@ -1,4 +1,8 @@
 # G1 WBC tracking: one policy, many motion clips (see config/clips/).
+policy_dir: config/policy/wbc
+clips_dir: config/clips
+clips_manifest: manifest.yaml
+
 FSM:
   _:
     Passive:
@@ -8,10 +12,13 @@ FSM:
     Wbc_Tracking:
       id: 3
       type: WbcTracking
+    FloorReady:
+      id: 4
 
   Passive:
     transitions:
       FixStand: LT + up.on_pressed
+      FloorReady: LT + down.on_pressed
     mode: [
       1,1,1,1,1,1,
       1,1,1,1,1,1,
@@ -56,14 +63,35 @@ FSM:
       ]
     ]
 
+  FloorReady:
+    transitions:
+      Passive: LT + B.on_pressed
+      Wbc_Tracking: RT + Y.on_pressed
+    ts: [0, 2]
+    kp: [
+      100,100,100,150,40,40,
+      100,100,100,150,40,40,
+      200,200,200,
+      40,40,40,40,40,40,40,
+      40,40,40,40,40,40,40,
+    ]
+    kd: [
+      2,2,2,4,2,2,
+      2,2,2,4,2,2,
+      5,5,5,
+      10,10,10,10,10,10,10,
+      10,10,10,10,10,10,10,
+    ]
+
   Wbc_Tracking:
     transitions:
       Passive: LT + B.on_pressed
       FixStand: LT + up.on_pressed
-    policy_dir: config/policy/wbc
-    clips_dir: config/clips
-    clips_manifest: manifest.yaml
     clip_next: RT + right.on_pressed
     clip_prev: RT + left.on_pressed
+    clip_getup: up.on_pressed
+    clip_liedown: down.on_pressed
+    pose_clips:
+      getup: getup_01
+      liedown: liedown_01
     time_start: 0.0
-    time_end: 1000.0

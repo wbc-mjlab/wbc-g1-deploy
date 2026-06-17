@@ -1,7 +1,6 @@
 #pragma once
 
 #include "isaaclab/assets/articulation/articulation.h"
-#include <cnpy.h>
 #include <Eigen/Dense>
 
 #include <string>
@@ -30,7 +29,6 @@ public:
   std::vector<float> ref_gravity_b() const;
   std::vector<float> ref_joint_pos() const;
   std::vector<float> ref_joint_vel() const;
-  std::vector<float> wbc_reference(float env_origin_z) const;
 
   float dt;
   int num_frames;
@@ -45,5 +43,4 @@ private:
   std::vector<Eigen::Vector3f> anchor_ang_vels_;
   std::vector<Eigen::VectorXf> dof_positions_;
   std::vector<Eigen::VectorXf> dof_velocities_;
-  Eigen::Matrix3f world_to_init_;
 };

@@ -1,8 +1,9 @@
 #include "MotionClipLibrary.h"
-#include "State_WbcTracking.h"
 
 #include <spdlog/spdlog.h>
 #include <yaml-cpp/yaml.h>
+
+#include "motion_npz.h"
 
 #include <stdexcept>
 
@@ -13,7 +14,8 @@ MotionClipLibrary::MotionClipLibrary(
   std::filesystem::path clips_dir,
   std::filesystem::path manifest_path,
   float step_dt,
-  const std::string& anchor_body_name)
+  const std::string& anchor_body_name,
+  const std::unordered_map<std::string, std::string>& pose_clips)
 : clips_dir_(std::move(clips_dir))
 , step_dt_(step_dt)
 , anchor_body_(anchor_body_name)
@@ -42,6 +44,18 @@ MotionClipLibrary::MotionClipLibrary(
     throw std::runtime_error("manifest has no clips");
   }
 
+  for (const auto& [key, clip_name] : pose_clips) {
+    ClipEntry clip;
+    clip.name = clip_name;
+    clip.path = resolve_clip_path(clips_dir_, clip_name);
+    if (!std::filesystem::exists(clip.path)) {
+      throw std::runtime_error(
+        "pose clip missing for '" + key + "': " + clip.path.string());
+    }
+    pose_clips_[key] = std::move(clip);
+    spdlog::info("Registered pose clip {} -> {}", key, clip_name);
+  }
+
   int start_index = 0;
   if (root["default"]) {
     const std::string def = root["default"].as<std::string>();
@@ -64,6 +78,12 @@ MotionClipLibrary::MotionClipLibrary(
 
 const std::string& MotionClipLibrary::currentName() const
 {
+  if (current_kind_ != ClipKind::Browsable) {
+    const auto it = pose_clips_.find(current_pose_key_);
+    if (it != pose_clips_.end()) {
+      return it->second.name;
+    }
+  }
   return clips_.at(static_cast<size_t>(current_index_)).name;
 }
 
@@ -73,6 +93,9 @@ bool MotionClipLibrary::loadClipAt(int index)
     return false;
   }
   current_index_ = index;
+  last_browsable_index_ = index;
+  current_kind_ = ClipKind::Browsable;
+  current_pose_key_.clear();
   const auto& clip = clips_[static_cast<size_t>(current_index_)];
   loader_ = std::make_shared<WbcMotionLoader>(
     clip.path.string(), anchor_body_, step_dt_);
@@ -85,22 +108,47 @@ bool MotionClipLibrary::loadClipAt(int index)
   return true;
 }
 
-bool MotionClipLibrary::selectClip(int index)
+bool MotionClipLibrary::nextBrowsableClip()
 {
-  return loadClipAt(index);
-}
-
-bool MotionClipLibrary::nextClip()
-{
-  const int next = (current_index_ + 1) % static_cast<int>(clips_.size());
+  const int next = (last_browsable_index_ + 1) % static_cast<int>(clips_.size());
   return loadClipAt(next);
 }
 
-bool MotionClipLibrary::prevClip()
+bool MotionClipLibrary::prevBrowsableClip()
 {
   const int n = static_cast<int>(clips_.size());
-  const int prev = (current_index_ - 1 + n) % n;
+  const int prev = (last_browsable_index_ - 1 + n) % n;
   return loadClipAt(prev);
+}
+
+bool MotionClipLibrary::selectPoseClip(const std::string& key)
+{
+  const auto it = pose_clips_.find(key);
+  if (it == pose_clips_.end()) {
+    return false;
+  }
+
+  if (current_kind_ == ClipKind::Browsable) {
+    last_browsable_index_ = current_index_;
+  }
+
+  current_pose_key_ = key;
+  if (key == "getup") {
+    current_kind_ = ClipKind::PoseGetup;
+  } else if (key == "liedown") {
+    current_kind_ = ClipKind::PoseLiedown;
+  } else {
+    current_kind_ = ClipKind::Browsable;
+  }
+
+  loader_ = std::make_shared<WbcMotionLoader>(
+    it->second.path.string(), anchor_body_, step_dt_);
+  spdlog::info(
+    "Pose clip [{}] {} ({:.2f}s)",
+    key,
+    it->second.name,
+    loader_->duration);
+  return true;
 }
 
 void MotionClipLibrary::resetPlayback(
