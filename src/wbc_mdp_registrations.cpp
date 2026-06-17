@@ -1,6 +1,7 @@
 #include "State_WbcTracking.h"
 
 #include "motion_reference_obs.h"
+#include "wbc_mdp_registrations.h"
 #include "isaaclab/envs/mdp/observations/observations.h"
 #include "isaaclab/envs/mdp/actions/joint_actions.h"
 
@@ -57,3 +58,9 @@ REGISTER_ACTION(ReferenceJointPositionAction);
 
 }  // namespace mdp
 }  // namespace isaaclab
+
+namespace wbc_deploy {
+
+void ensure_mdp_registered() {}
+
+}  // namespace wbc_deploy

@@ -4,6 +4,7 @@
 #include "joystick_expr.h"
 #include "unitree_articulation.h"
 #include "wbc_entry_mode.h"
+#include "wbc_mdp_registrations.h"
 #include "wbc_tracking_params.h"
 #include "isaaclab/algorithms/algorithms.h"
 
@@ -21,6 +22,8 @@ State_WbcTracking::~State_WbcTracking()
 State_WbcTracking::State_WbcTracking(int state_mode, std::string state_string)
 : FSMState(state_mode, state_string)
 {
+  wbc_deploy::ensure_mdp_registered();
+
   const auto cfg = param::config["FSM"][state_string];
   const auto& root = param::config;
   auto policy_dir = param::resolve_policy_dir(
