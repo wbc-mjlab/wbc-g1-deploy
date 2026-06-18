@@ -74,6 +74,12 @@ MotionClipLibrary::MotionClipLibrary(
   if (!loadClipAt(start_index)) {
     throw std::runtime_error("failed to load default clip");
   }
+  selected_browsable_index_ = start_index;
+}
+
+const std::string& MotionClipLibrary::selectedBrowsableName() const
+{
+  return clips_.at(static_cast<size_t>(selected_browsable_index_)).name;
 }
 
 const std::string& MotionClipLibrary::currentName() const
@@ -94,6 +100,7 @@ bool MotionClipLibrary::loadClipAt(int index)
   }
   current_index_ = index;
   last_browsable_index_ = index;
+  selected_browsable_index_ = index;
   current_kind_ = ClipKind::Browsable;
   current_pose_key_.clear();
   const auto& clip = clips_[static_cast<size_t>(current_index_)];
@@ -108,17 +115,33 @@ bool MotionClipLibrary::loadClipAt(int index)
   return true;
 }
 
-bool MotionClipLibrary::nextBrowsableClip()
-{
-  const int next = (last_browsable_index_ + 1) % static_cast<int>(clips_.size());
-  return loadClipAt(next);
-}
-
-bool MotionClipLibrary::prevBrowsableClip()
+bool MotionClipLibrary::browseNextSelected()
 {
   const int n = static_cast<int>(clips_.size());
-  const int prev = (last_browsable_index_ - 1 + n) % n;
-  return loadClipAt(prev);
+  selected_browsable_index_ = (selected_browsable_index_ + 1) % n;
+  spdlog::info(
+    "Selected clip [{}/{}] {}",
+    selected_browsable_index_ + 1,
+    n,
+    selectedBrowsableName());
+  return true;
+}
+
+bool MotionClipLibrary::browsePrevSelected()
+{
+  const int n = static_cast<int>(clips_.size());
+  selected_browsable_index_ = (selected_browsable_index_ - 1 + n) % n;
+  spdlog::info(
+    "Selected clip [{}/{}] {}",
+    selected_browsable_index_ + 1,
+    n,
+    selectedBrowsableName());
+  return true;
+}
+
+bool MotionClipLibrary::activateSelectedBrowsable()
+{
+  return loadClipAt(selected_browsable_index_);
 }
 
 bool MotionClipLibrary::selectPoseClip(const std::string& key)

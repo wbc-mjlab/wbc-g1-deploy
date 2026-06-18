@@ -60,6 +60,7 @@ set(WBC_LIB_SRC
   ${REPO_ROOT}/src/motion_npz.cpp
   ${REPO_ROOT}/src/motion_reference_obs.cpp
   ${REPO_ROOT}/src/wbc_tracking_params.cpp
+  ${REPO_ROOT}/src/pd_torque_clip.cpp
 )
 
 add_library(${PROJECT_NAME}_lib ${WBC_LIB_SRC})

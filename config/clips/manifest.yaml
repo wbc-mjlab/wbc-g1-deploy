@@ -8,16 +8,16 @@ clips:
     file: dance_02.npz
   - name: walk_01
     file: walk_01.npz
+  - name: fight_combo_02
+    file: fight_combo_02.npz
   - name: run_01
     file: run_01.npz
   - name: run_02
     file: run_02.npz
   - name: run_03
     file: run_03.npz
-  - name: sprint_01
-    file: sprint_01.npz
-  - name: sprint_02
-    file: sprint_02.npz
-  - name: fight_combo_02
-    file: fight_combo_02.npz
+  # - name: sprint_01
+  #   file: sprint_01.npz
+  # - name: sprint_02
+  #   file: sprint_02.npz
 default: idle_02
