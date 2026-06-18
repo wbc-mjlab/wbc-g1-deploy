@@ -39,11 +39,14 @@ public:
 
   const std::vector<ClipEntry>& clips() const { return clips_; }
   int currentIndex() const { return current_index_; }
+  int selectedBrowsableIndex() const { return selected_browsable_index_; }
   ClipKind currentKind() const { return current_kind_; }
   const std::string& currentName() const;
+  const std::string& selectedBrowsableName() const;
 
-  bool nextBrowsableClip();
-  bool prevBrowsableClip();
+  bool browseNextSelected();
+  bool browsePrevSelected();
+  bool activateSelectedBrowsable();
   bool selectPoseClip(const std::string& key);
 
   void resetPlayback(const isaaclab::ArticulationData& data, float time_start);
@@ -55,6 +58,7 @@ private:
   std::vector<ClipEntry> clips_;
   std::unordered_map<std::string, ClipEntry> pose_clips_;
   int current_index_ = 0;
+  int selected_browsable_index_ = 0;
   int last_browsable_index_ = 0;
   ClipKind current_kind_ = ClipKind::Browsable;
   std::string current_pose_key_;

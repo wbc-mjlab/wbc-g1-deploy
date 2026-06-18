@@ -89,6 +89,7 @@ FSM:
       FixStand: LT + up.on_pressed
     clip_next: RT + right.on_pressed
     clip_prev: RT + left.on_pressed
+    clip_play: A.on_pressed
     clip_getup: up.on_pressed
     clip_liedown: down.on_pressed
     pose_clips:

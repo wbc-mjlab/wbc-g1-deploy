@@ -27,10 +27,10 @@ mkdir -p build && cd build && cmake .. && make -j
 | WBC tracking (standing) | R2 + A (from FixStand) |
 | WBC + getup (from floor) | R2 + Y (from FloorReady) |
 | Passive | L2 + B |
-| Next clip | RT + D-pad right (standing only; also starts clip after getup) |
-| Prev clip | RT + D-pad left (standing only; also starts clip after getup) |
-| Liedown | D-pad down (after current clip finishes) |
-| Getup | D-pad up (after liedown finishes; standing only) |
+| Select clip | RT + D-pad right / left (standing only) |
+| Play selected clip | A |
+| Liedown | D-pad down (when idle: select mode or after clip finishes; auto-plays) |
+| Getup | D-pad up (when down and idle; auto-plays) |
 
 ## Dependencies
 
@@ -60,7 +60,7 @@ CMake also checks `/opt/unitree_robotics`.
 | File | Purpose |
 |------|---------|
 | `config/config.yaml` | Active `policy_dir`, `clips_dir`, FSM + joystick |
-| `config/robot_defaults.yaml` | Real-robot PD gains, `joint_ids_map`, `default_joint_pos` |
+| `config/robot_defaults.yaml` | Real-robot PD gains, `joint_ids_map`, `default_joint_pos`, PD torque clip catalog |
 | `config/policy/wbc/params/config.yaml` | Deploy observation/history and action layout |
 | `config/policy/wbc/params/policy.onnx` | Policy weights |
 | `config/clips/` | Motion NPZ library + `manifest.yaml` |
@@ -74,6 +74,20 @@ clips_manifest: manifest.yaml
 ```
 
 Per-state FSM keys (`policy_dir`, `clips_dir`, …) override the root values when present.
+
+### PD torque clipping
+
+Before sending motor position targets, WBC can back-solve clipped positions so implied PD torque stays within motor limits (same scheme as `robot_core/motor_control_cpp`):
+
+```yaml
+# config/robot_defaults.yaml
+pd_torque_clipping:
+  enabled: true
+  fraction: 0.98          # soft cap = fraction * joint_max_torque
+  joint_max_torque: [...] # per policy joint, N·m
+```
+
+`Wbc_Tracking.pd_torque_clipping` overrides these defaults when set.
 
 ## Layout
 

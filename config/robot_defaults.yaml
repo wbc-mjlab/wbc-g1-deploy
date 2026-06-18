@@ -9,6 +9,18 @@ damping: [2.6, 6.3, 2.6, 6.3, 1.8, 1.8, 2.6, 6.3, 2.6, 6.3, 1.8, 1.8, 2.6, 1.8, 
 default_joint_pos: [-0.1,0,0,0.3,-0.2,0, -0.1,0,0,0.3,-0.2,0, 0,0,0,
   0.35,0.18,0,0.87,0,0,0, 0.35,-0.18,0,0.87,0,0,0]
 
+# G1 motor peak torque catalog (N·m), policy joint order — matches wbc_mjlab motor presets (y2).
+pd_torque_clipping:
+  enabled: true
+  fraction: 0.98
+  joint_max_torque: [
+    83.3, 131.0, 83.3, 131.0, 63.8, 63.8,
+    83.3, 131.0, 83.3, 131.0, 63.8, 63.8,
+    83.3, 63.8, 63.8,
+    31.9, 31.9, 31.9, 31.9, 31.9, 8.6, 8.6,
+    31.9, 31.9, 31.9, 31.9, 31.9, 8.6, 8.6,
+  ]
+
 wbc_tracking:
   anchor_body_name: torso_link
   env_origin_z: 0.0

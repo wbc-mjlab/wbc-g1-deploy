@@ -2,6 +2,7 @@
 
 #include "MotionClipLibrary.h"
 #include "joystick_expr.h"
+#include "pd_torque_clip.h"
 #include "unitree_articulation.h"
 #include "wbc_entry_mode.h"
 #include "wbc_mdp_registrations.h"
@@ -67,12 +68,17 @@ State_WbcTracking::State_WbcTracking(int state_mode, std::string state_string)
 
   const std::string clip_next_expr = cfg["clip_next"].as<std::string>("RT + right.on_pressed");
   const std::string clip_prev_expr = cfg["clip_prev"].as<std::string>("RT + left.on_pressed");
+  const std::string clip_play_expr = cfg["clip_play"].as<std::string>("A.on_pressed");
   const std::string clip_getup_expr = cfg["clip_getup"].as<std::string>("up.on_pressed");
   const std::string clip_liedown_expr = cfg["clip_liedown"].as<std::string>("down.on_pressed");
   clip_next_fn_ = compileJoystickExpr(clip_next_expr);
   clip_prev_fn_ = compileJoystickExpr(clip_prev_expr);
+  clip_play_fn_ = compileJoystickExpr(clip_play_expr);
   clip_getup_fn_ = compileJoystickExpr(clip_getup_expr);
   clip_liedown_fn_ = compileJoystickExpr(clip_liedown_expr);
+
+  pd_torque_clip_ = wbc_deploy::load_pd_torque_clip_config(
+    cfg, env->robot->data.joint_ids_map.size());
 
   time_range_[0] = cfg["time_start"] ? cfg["time_start"].as<float>() : 0.0f;
   syncPlaybackEndToMotion();
@@ -90,19 +96,53 @@ void State_WbcTracking::applyMotionLoader(bool reset_env)
 {
   motion = clip_library_->loader();
   syncPlaybackEndToMotion();
-  playback_finished_ = false;
-  was_playback_finished_ = false;
+  beginClipPlayback();
   if (reset_env) {
     env->reset();
     clip_library_->resetPlayback(env->robot->data, time_range_[0]);
   }
-  spdlog::info("Switched motion clip to: {}", clip_library_->currentName());
+  spdlog::info("Playing motion clip: {}", clip_library_->currentName());
+}
+
+void State_WbcTracking::beginClipPlayback()
+{
+  clip_playback_active_ = true;
+  awaiting_clip_select_ = false;
+  playback_finished_ = false;
+  was_playback_finished_ = false;
+}
+
+void State_WbcTracking::pauseClipPlayback(float frozen_time)
+{
+  clip_playback_active_ = false;
+  frozen_playback_time_ = frozen_time;
+}
+
+void State_WbcTracking::enterClipSelectMode(float frozen_time)
+{
+  awaiting_clip_select_ = true;
+  pauseClipPlayback(frozen_time);
+  playback_finished_ = false;
+  was_playback_finished_ = false;
+  spdlog::info(
+    "Select clip with RT + D-pad left/right, play {} with A",
+    clip_library_->selectedBrowsableName());
+}
+
+float State_WbcTracking::currentPlaybackTime() const
+{
+  if (clip_playback_active_) {
+    return static_cast<float>(env->episode_length) * env->step_dt + time_range_[0];
+  }
+  return frozen_playback_time_;
 }
 
 bool State_WbcTracking::isPlaybackFinished() const
 {
-  const float t = static_cast<float>(env->episode_length) * env->step_dt + time_range_[0];
-  return t >= time_range_[1] - env->step_dt * 0.5f;
+  if (!clip_playback_active_) {
+    return false;
+  }
+  return currentPlaybackTime() >= time_range_[1] - env->step_dt * 0.5f;
 }
 
 void State_WbcTracking::handleClipSwitch()
@@ -112,7 +152,6 @@ void State_WbcTracking::handleClipSwitch()
   }
 
   const auto& joy = FSMState::lowstate->joystick;
-  bool switched = false;
 
   was_playback_finished_ = playback_finished_;
   playback_finished_ = isPlaybackFinished();
@@ -121,48 +160,53 @@ void State_WbcTracking::handleClipSwitch()
     const auto kind = clip_library_->currentKind();
     if (kind == MotionClipLibrary::ClipKind::PoseGetup) {
       robot_is_up_ = true;
-      awaiting_clip_select_ = true;
-      spdlog::info("Getup finished — select a clip with RT + D-pad left/right");
+      enterClipSelectMode(time_range_[1]);
       return;
     }
     if (kind == MotionClipLibrary::ClipKind::PoseLiedown) {
       robot_is_up_ = false;
+      pauseClipPlayback(time_range_[1]);
       spdlog::info("Liedown finished — robot is down");
+      return;
+    }
+    if (kind == MotionClipLibrary::ClipKind::Browsable) {
+      enterClipSelectMode(time_range_[1]);
+      return;
     }
   }
 
-  if (awaiting_clip_select_) {
-    if (clip_next_fn_ && clip_next_fn_(joy)) {
-      switched = clip_library_->nextBrowsableClip();
-    } else if (clip_prev_fn_ && clip_prev_fn_(joy)) {
-      switched = clip_library_->prevBrowsableClip();
+  if (!robot_is_up_) {
+    if (!clip_playback_active_ && clip_getup_fn_ && clip_getup_fn_(joy)) {
+      if (clip_library_->selectPoseClip("getup")) {
+        applyMotionLoader(true);
+      }
     }
-    if (switched) {
-      awaiting_clip_select_ = false;
+    return;
+  }
+
+  if (clip_liedown_fn_ && clip_liedown_fn_(joy)
+      && (awaiting_clip_select_ || playback_finished_)) {
+    if (clip_library_->selectPoseClip("liedown")) {
       applyMotionLoader(true);
     }
     return;
   }
 
-  if (!robot_is_up_) {
-    if (playback_finished_ && clip_getup_fn_ && clip_getup_fn_(joy)) {
-      switched = clip_library_->selectPoseClip("getup");
-    }
-  } else if (playback_finished_ && clip_liedown_fn_ && clip_liedown_fn_(joy)) {
-    switched = clip_library_->selectPoseClip("liedown");
-  } else if (clip_library_->currentKind() == MotionClipLibrary::ClipKind::Browsable) {
+  if (awaiting_clip_select_) {
     if (clip_next_fn_ && clip_next_fn_(joy)) {
-      switched = clip_library_->nextBrowsableClip();
-    } else if (clip_prev_fn_ && clip_prev_fn_(joy)) {
-      switched = clip_library_->prevBrowsableClip();
+      clip_library_->browseNextSelected();
+      return;
+    }
+    if (clip_prev_fn_ && clip_prev_fn_(joy)) {
+      clip_library_->browsePrevSelected();
+      return;
+    }
+    if (clip_play_fn_ && clip_play_fn_(joy)) {
+      if (clip_library_->activateSelectedBrowsable()) {
+        applyMotionLoader(true);
+      }
     }
   }
-
-  if (!switched) {
-    return;
-  }
-
-  applyMotionLoader(true);
 }
 
 void State_WbcTracking::enter()
@@ -183,16 +227,22 @@ void State_WbcTracking::enter()
     }
     robot_is_up_ = false;
     awaiting_clip_select_ = false;
+    clip_playback_active_ = true;
     wbc_deploy::pendingWbcEntryMode() = wbc_deploy::WbcEntryMode::Standing;
     spdlog::info("WBC tracking started from floor — playing getup");
   } else {
     robot_is_up_ = true;
-    awaiting_clip_select_ = false;
+    enterClipSelectMode(0.0f);
+    spdlog::info(
+      "WBC tracking ready — selected clip: {}",
+      clip_library_->selectedBrowsableName());
   }
 
   syncPlaybackEndToMotion();
-  playback_finished_ = false;
-  was_playback_finished_ = false;
+  if (clip_playback_active_) {
+    playback_finished_ = false;
+    was_playback_finished_ = false;
+  }
   env->reset();
   policy_thread_running = true;
   policy_thread = std::thread([this] {
@@ -201,13 +251,16 @@ void State_WbcTracking::enter()
       std::chrono::duration<double>(env->step_dt));
 
     auto sleep_till = clock::now() + dt;
-    clip_library_->resetPlayback(env->robot->data, time_range_[0]);
+    {
+      std::lock_guard<std::mutex> lock(tracking_mtx_);
+      clip_library_->resetPlayback(env->robot->data, currentPlaybackTime());
+    }
 
     while (policy_thread_running) {
       {
         std::lock_guard<std::mutex> lock(tracking_mtx_);
         env->robot->update();
-        motion->update(env->episode_length * env->step_dt + time_range_[0]);
+        motion->update(currentPlaybackTime());
         env->step();
       }
       std::this_thread::sleep_until(sleep_till);
@@ -222,7 +275,29 @@ void State_WbcTracking::run()
   handleClipSwitch();
 
   const auto action = env->action_manager->processed_actions();
+  std::vector<float> q_cmd(action.begin(), action.end());
+
+  if (pd_torque_clip_.enabled && FSMState::lowstate) {
+    std::vector<float> q_cur(q_cmd.size());
+    std::vector<float> dq_cur(q_cmd.size());
+    {
+      std::lock_guard<std::mutex> lock(FSMState::lowstate->mutex_);
+      for (size_t i = 0; i < q_cmd.size(); ++i) {
+        const int motor = env->robot->data.joint_ids_map[i];
+        q_cur[i] = FSMState::lowstate->msg_.motor_state()[motor].q();
+        dq_cur[i] = FSMState::lowstate->msg_.motor_state()[motor].dq();
+      }
+    }
+    wbc_deploy::clip_pd_torque_positions(
+      q_cmd,
+      q_cur,
+      dq_cur,
+      env->robot->data.joint_stiffness,
+      env->robot->data.joint_damping,
+      pd_torque_clip_);
+  }
+
   for (size_t i = 0; i < env->robot->data.joint_ids_map.size(); ++i) {
-    lowcmd->msg_.motor_cmd()[env->robot->data.joint_ids_map[i]].q() = action[i];
+    lowcmd->msg_.motor_cmd()[env->robot->data.joint_ids_map[i]].q() = q_cmd[i];
   }
 }
