@@ -16,8 +16,8 @@ clips:
     file: run_02.npz
   - name: run_03
     file: run_03.npz
-  # - name: sprint_01
-  #   file: sprint_01.npz
-  # - name: sprint_02
-  #   file: sprint_02.npz
+  - name: sprint_01
+    file: sprint_01.npz
+  - name: sprint_02
+    file: sprint_02.npz
 default: idle_02
