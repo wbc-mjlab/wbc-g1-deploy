@@ -6,18 +6,26 @@ clips:
     file: dance_01.npz
   - name: dance_02
     file: dance_02.npz
-  - name: walk_01
-    file: walk_01.npz
+  - name: dance_03
+    file: dance_03.npz
   - name: fight_combo_02
     file: fight_combo_02.npz
+  - name: walk_01
+    file: walk_01.npz
+  # - name: walk_02
+  #   file: walk_02.npz
+  # - name: walk_03
+  #   file: walk_03.npz
   - name: run_01
     file: run_01.npz
-  - name: run_02
-    file: run_02.npz
-  - name: run_03
-    file: run_03.npz
-  # - name: sprint_01
-  #   file: sprint_01.npz
-  # - name: sprint_02
-  #   file: sprint_02.npz
+  - name: flip_01
+    file: flip_01.npz
+  - name: flip_02
+    file: flip_02.npz
+  # - name: flip_03
+  #   file: flip_03.npz
+  # - name: flip_04
+  #   file: flip_04.npz
+  - name: sprint_01
+    file: sprint_01.npz
 default: idle_02
