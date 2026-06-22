@@ -18,12 +18,12 @@ clips:
   #   file: walk_03.npz
   - name: run_01
     file: run_01.npz
-  - name: sprint_01
-    file: sprint_01.npz
+  # - name: sprint_01
+  #   file: sprint_01.npz
   - name: flip_01
     file: flip_01.npz
-  # - name: flip_02
-  #   file: flip_02.npz
+  - name: flip_02
+    file: flip_02.npz
   # - name: flip_03
   #   file: flip_03.npz
 default: idle_02
