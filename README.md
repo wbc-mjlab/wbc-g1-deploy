@@ -77,7 +77,7 @@ Per-state FSM keys (`policy_dir`, `clips_dir`, …) override the root values whe
 
 ### PD torque clipping
 
-Before sending motor position targets, WBC can back-solve clipped positions so implied PD torque stays within motor limits (same scheme as `robot_core/motor_control_cpp`):
+Before sending motor position targets, WBC can back-solve clipped positions so implied PD torque stays within motor limits:
 
 ```yaml
 # config/robot_defaults.yaml
