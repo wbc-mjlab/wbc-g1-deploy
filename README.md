@@ -4,6 +4,20 @@ Onboard deployment for Unitree G1 whole-body tracking. **One policy, many motion
 
 The controller subscribes to Unitree SDK2 `LowState`, runs the bundled ONNX policy, and publishes motor commands.
 
+## Bundled policy
+
+The included `policy.onnx` was trained in [wbc-mjlab](https://github.com/wbc-mjlab/wbc-mjlab) (`Wbc-G1`) mainly on the **LAFAN1 retarget** library, plus a **small subset of BONES-SEED** clips (mostly **back and side flips**). It is a reference controller for the deploy stack — not a universal foundation model.
+
+For motions or skills outside that training mix, **train your own policy** on your clips and drop in the exported artifacts:
+
+```bash
+# in wbc-mjlab
+uv run wbc-mjlab-train --task Wbc-G1 --dataset lafan
+# play exports params/policy.onnx + params/config.yaml → copy into config/policy/
+```
+
+See [wbc-mjlab docs](https://github.com/wbc-mjlab/wbc-mjlab/blob/main/docs/USAGE.md) for datasets, motion conversion, and export. Bundled runtime clips live under `config/clips/` (`manifest.yaml`).
+
 **Standing:** Passive → FixStand (L2 + D-pad Up) → WBC tracking (R2 + A)
 
 **From floor:** Passive → FloorReady (L2 + D-pad Down) → WBC + getup (R2 + Y)
@@ -99,3 +113,11 @@ wbc_g1_deploy/
   config/
   scripts/
 ```
+
+## Related repos
+
+| Repo | Role |
+|------|------|
+| [wbc-mjlab/wbc-mjlab](https://github.com/wbc-mjlab/wbc-mjlab) | Train policies; export `policy.onnx` + `config.yaml` |
+| [wbc-mjlab/wbc-g1-deploy](https://github.com/wbc-mjlab/wbc-g1-deploy) | This repo — G1 ONNX runtime |
+| [mujocolab/mjlab](https://github.com/mujocolab/mjlab) | Simulation / training stack |
