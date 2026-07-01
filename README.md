@@ -32,6 +32,8 @@ mkdir -p build && cd build && cmake .. && make -j
 
 `--network` selects the Unitree DDS interface for `rt/lowstate` / `rt/lowcmd` (domain 0).
 
+On the G1 onboard PC, use `--network=eth0` and set up Ethernet / internet sharing first — see [docs/DEPLOY.md](docs/DEPLOY.md).
+
 ## Joystick
 
 | Action | Buttons |
