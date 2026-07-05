@@ -24,10 +24,38 @@ See [wbc-mjlab docs](https://github.com/wbc-mjlab/wbc-mjlab/blob/main/docs/USAGE
 
 ## Build and run
 
+Three interchangeable ways to build — pick one:
+
+### Native (host toolchain)
+
 ```bash
 scripts/bootstrap_thirdparty.sh
 mkdir -p build && cd build && cmake .. && make -j
 ./wbc_g1_ctrl --network=lo   # or your robot NIC (e.g. eth0)
+```
+
+Requires the system dependencies and `unitree_sdk2` installed (see [Dependencies](#dependencies)).
+
+### Docker
+
+Builds everything (toolchain, `unitree_sdk2`, ONNX Runtime, controller) into one image — no host setup:
+
+```bash
+docker build -t wbc-g1-deploy .
+docker run --rm wbc-g1-deploy                        # prints --help
+docker run --rm --network host wbc-g1-deploy \
+    build/wbc_g1_ctrl --network=eth0                 # run against a robot
+```
+
+DDS needs the host network stack, so use `--network host` when talking to the robot.
+
+### Pixi
+
+[Pixi](https://pixi.sh) provisions a self-contained, conda-like environment with the full toolchain and every library dependency from conda-forge — no `apt install` needed:
+
+```bash
+pixi run build                       # bootstraps ONNX + unitree_sdk2, then builds
+pixi run start -- --network=eth0     # run against a robot
 ```
 
 `--network` selects the Unitree DDS interface for `rt/lowstate` / `rt/lowcmd` (domain 0).

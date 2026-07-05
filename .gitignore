@@ -3,6 +3,10 @@ thirdparty/onnxruntime-*/
 log/
 logs/
 
+# Pixi
+.pixi/
+.deps/
+
 # Python
 __pycache__/
 *.py[cod]
