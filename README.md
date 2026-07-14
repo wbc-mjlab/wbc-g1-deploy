@@ -2,7 +2,15 @@
 
 Onboard deployment for Unitree G1 whole-body tracking. **One policy, many motion clips** — swap NPZ trajectories at runtime with the joystick.
 
+This stack pairs with [wbc-mjlab](https://github.com/wbc-mjlab/wbc-mjlab), which extends mjlab's original **single-clip** tracking example into a **clip-library** training pipeline (multi-clip datasets, RSI, NPZ conversion). Deploy mirrors that model: one exported ONNX policy plus a `config/clips/` library selected at runtime (`manifest.yaml`).
+
 The controller subscribes to Unitree SDK2 `LowState`, runs the bundled ONNX policy, and publishes motor commands.
+
+## Demo
+
+[![Simulation demo](https://img.youtube.com/vi/CSyczObERIc/maxresdefault.jpg)](https://www.youtube.com/watch?v=CSyczObERIc)
+
+Bundled policy and clip library on loopback (`--network=lo`). [Watch on YouTube](https://www.youtube.com/watch?v=CSyczObERIc).
 
 ## Bundled policy
 
@@ -16,7 +24,7 @@ uv run wbc-mjlab-train --task Wbc-G1 --dataset lafan
 # play exports params/policy.onnx + params/config.yaml → copy into config/policy/
 ```
 
-See [wbc-mjlab docs](https://github.com/wbc-mjlab/wbc-mjlab/blob/main/docs/USAGE.md) for datasets, motion conversion, and export. Bundled runtime clips live under `config/clips/` (`manifest.yaml`).
+See [wbc-mjlab docs](https://wbc-mjlab.github.io/wbc-mjlab/) for datasets, motion conversion, and export. Bundled runtime clips live under `config/clips/` (`manifest.yaml`).
 
 **Standing:** Passive → FixStand (L2 + D-pad Up) → WBC tracking (R2 + A)
 
