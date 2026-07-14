@@ -6,6 +6,12 @@ This stack pairs with [wbc-mjlab](https://github.com/wbc-mjlab/wbc-mjlab), which
 
 The controller subscribes to Unitree SDK2 `LowState`, runs the bundled ONNX policy, and publishes motor commands.
 
+## Demo
+
+[![Simulation demo](https://img.youtube.com/vi/CSyczObERIc/maxresdefault.jpg)](https://www.youtube.com/watch?v=CSyczObERIc)
+
+Bundled policy and clip library on loopback (`--network=lo`). [Watch on YouTube](https://www.youtube.com/watch?v=CSyczObERIc).
+
 ## Bundled policy
 
 The included `policy.onnx` was trained in [wbc-mjlab](https://github.com/wbc-mjlab/wbc-mjlab) (`Wbc-G1`) mainly on the **LAFAN1 retarget** library, plus a **small subset of BONES-SEED** clips (mostly **back and side flips**). It is a reference controller for the deploy stack — not a universal foundation model.
@@ -18,7 +24,7 @@ uv run wbc-mjlab-train --task Wbc-G1 --dataset lafan
 # play exports params/policy.onnx + params/config.yaml → copy into config/policy/
 ```
 
-See [wbc-mjlab docs](https://github.com/wbc-mjlab/wbc-mjlab/blob/main/docs/USAGE.md) for datasets, motion conversion, and export. Bundled runtime clips live under `config/clips/` (`manifest.yaml`).
+See [wbc-mjlab docs](https://wbc-mjlab.github.io/wbc-mjlab/) for datasets, motion conversion, and export. Bundled runtime clips live under `config/clips/` (`manifest.yaml`).
 
 **Standing:** Passive → FixStand (L2 + D-pad Up) → WBC tracking (R2 + A)
 

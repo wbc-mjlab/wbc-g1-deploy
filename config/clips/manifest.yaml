@@ -18,8 +18,8 @@ clips:
   #   file: walk_03.npz
   - name: run_01
     file: run_01.npz
-  - name: flip_01
-    file: flip_01.npz
+  # - name: flip_01
+  #   file: flip_01.npz
   - name: flip_02
     file: flip_02.npz
   # - name: flip_03
