@@ -1,0 +1,67 @@
+# Pixi build environment for the Unitree G1 WBC deploy controller.
+#
+# Pixi provisions a self-contained, conda-like environment with the whole C++
+# toolchain and every library dependency -- no system `apt install` required.
+#
+#   pixi install          # create the env from conda-forge
+#   pixi run build         # bootstrap ONNX + unitree_sdk2, then build the controller
+#   pixi run start -- --network=eth0   # run against a robot (DDS domain 0)
+#
+# Two dependencies are not on conda-forge and are fetched on first `build`:
+#   * ONNX Runtime 1.22.0  -> scripts/bootstrap_thirdparty.sh (into thirdparty/)
+#   * unitree_sdk2          -> cloned + built + installed into .deps/unitree_sdk2
+# Both land in gitignored paths and are reused across builds.
+[workspace]
+name = "wbc-g1-deploy"
+version = "0.1.0"
+description = "Build environment for the Unitree G1 WBC deploy controller"
+channels = ["conda-forge"]
+platforms = ["linux-64", "linux-aarch64"]
+
+[dependencies]
+cxx-compiler = ">=1.7"
+cmake = ">=3.12"
+make = "*"
+git = "*"
+curl = "*"
+libboost-devel = "*"   # Boost.program_options + CMake config
+eigen = "*"
+yaml-cpp = "*"
+fmt = "*"
+spdlog = "*"
+zlib = "*"
+
+[activation.env]
+# unitree_sdk2 + CycloneDDS shared libs live in a repo-local prefix; the ONNX
+# and Boost/yaml/fmt libs already resolve via RPATH, but keep the SDK libs and
+# the conda libs on the loader path so `pixi run start` works from any cwd.
+UNITREE_SDK_PREFIX = "$PIXI_PROJECT_ROOT/.deps/unitree_sdk2"
+LD_LIBRARY_PATH = "$PIXI_PROJECT_ROOT/.deps/unitree_sdk2/lib:$CONDA_PREFIX/lib"
+# Put the conda include prefix (and Eigen's `eigen3/` subdir, for the mixed
+# `<Eigen/...>` / `<eigen3/Eigen/...>` includes in the source) on the compiler
+# search path. cnpy.cpp is compiled before the CMakeLists links ZLIB::ZLIB, so
+# zlib.h is otherwise only found via the system prefix -- CPATH covers it here.
+CPATH = "$CONDA_PREFIX/include:$CONDA_PREFIX/include/eigen3"
+
+[tasks.bootstrap]
+cmd = "bash scripts/bootstrap_thirdparty.sh"
+description = "Download the ONNX Runtime prebuilt bundle into thirdparty/"
+
+[tasks.sdk]
+description = "Clone, build and install unitree_sdk2 into .deps/unitree_sdk2 (skipped if present)"
+cmd = "bash -c 'set -e; PREFIX=\"$PIXI_PROJECT_ROOT/.deps/unitree_sdk2\"; if [ -f \"$PREFIX/lib/cmake/unitree_sdk2/unitree_sdk2Config.cmake\" ]; then echo \"unitree_sdk2 already installed at $PREFIX\"; exit 0; fi; rm -rf .deps/src .deps/build; git clone --depth 1 https://github.com/unitreerobotics/unitree_sdk2.git .deps/src/unitree_sdk2; cmake -S .deps/src/unitree_sdk2 -B .deps/build/unitree_sdk2 -DBUILD_EXAMPLES=OFF -DCMAKE_INSTALL_PREFIX=\"$PREFIX\"; cmake --build .deps/build/unitree_sdk2 -j; cmake --install .deps/build/unitree_sdk2'"
+
+[tasks.configure]
+description = "Configure the CMake build (finds unitree_sdk2 + conda-forge deps)"
+depends-on = ["bootstrap", "sdk"]
+cmd = "cmake -S . -B build -DCMAKE_PREFIX_PATH=\"$PIXI_PROJECT_ROOT/.deps/unitree_sdk2;$CONDA_PREFIX\""
+
+[tasks.build]
+description = "Build wbc_g1_ctrl"
+depends-on = ["configure"]
+cmd = "cmake --build build -j"
+
+[tasks.start]
+description = "Run the controller, e.g. `pixi run start -- --network=eth0`"
+depends-on = ["build"]
+cmd = "build/wbc_g1_ctrl"
