@@ -1,14 +1,15 @@
 #pragma once
 
 #include "FSM/FSMState.h"
+#include "IMotionReference.h"
 #include "MotionClipLibrary.h"
-#include "WbcMotionLoader.h"
 #include "isaaclab/envs/manager_based_rl_env.h"
 #include "pd_torque_clip.h"
 
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <string>
 
 
 class State_WbcTracking : public FSMState
@@ -27,7 +28,8 @@ public:
         }
     }
 
-    static std::shared_ptr<WbcMotionLoader> motion;
+    /// Active reference source for MDP ``ref_*`` + residual ``q_ref``.
+    static std::shared_ptr<IMotionReference> motion;
 
 private:
     void handleClipSwitch();
@@ -41,6 +43,7 @@ private:
 
     std::unique_ptr<isaaclab::ManagerBasedRLEnv> env;
     std::unique_ptr<MotionClipLibrary> clip_library_;
+    std::string reference_source_ = "clips";  // clips | dds
     std::thread policy_thread;
     bool policy_thread_running = false;
     std::array<float, 2> time_range_;

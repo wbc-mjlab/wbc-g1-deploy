@@ -1,0 +1,22 @@
+module wbc_g1_deploy {
+  module msg {
+    module dds_ {
+      struct MetaKV_ {
+        string name;
+        sequence<float> values;
+      };
+
+      struct WbcReference_ {
+        uint32 version;
+        string schema;
+        string mode;
+        string robot_id;
+        uint64 stamp_us;
+        uint64 step;
+        sequence<MetaKV_> meta;
+        sequence<float> arc;
+        sequence<float> joint_pos;
+      };
+    };
+  };
+};

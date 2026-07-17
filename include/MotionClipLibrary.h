@@ -47,6 +47,7 @@ public:
   bool browseNextSelected();
   bool browsePrevSelected();
   bool activateSelectedBrowsable();
+  bool selectBrowsableByName(const std::string& name);
   bool selectPoseClip(const std::string& key);
 
   void resetPlayback(const isaaclab::ArticulationData& data, float time_start);

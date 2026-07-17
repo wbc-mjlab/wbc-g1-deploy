@@ -75,16 +75,16 @@ WbcMotionLoader::WbcMotionLoader(
   }
 
   num_frames = static_cast<int>(num_frames_npz);
-  duration = num_frames * dt;
-  frame = 0;
+  duration_ = num_frames * dt;
+  frame_ = 0;
   update(0.0f);
 }
 
 void WbcMotionLoader::update(float time)
 {
-  const float phase = std::clamp(time, 0.0f, duration);
+  const float phase = std::clamp(time, 0.0f, duration_);
   const float f = phase / dt;
-  frame = std::min(static_cast<int>(std::floor(f)), num_frames - 1);
+  frame_ = std::min(static_cast<int>(std::floor(f)), num_frames - 1);
 }
 
 void WbcMotionLoader::reset(
@@ -97,27 +97,27 @@ void WbcMotionLoader::reset(
 
 Eigen::Vector3f WbcMotionLoader::anchor_pos_w() const
 {
-  return anchor_positions_[frame];
+  return anchor_positions_[frame_];
 }
 
 Eigen::Quaternionf WbcMotionLoader::anchor_quat_w() const
 {
-  return anchor_quaternions_[frame];
+  return anchor_quaternions_[frame_];
 }
 
 Eigen::Vector3f WbcMotionLoader::anchor_lin_vel_w() const
 {
-  return anchor_lin_vels_[frame];
+  return anchor_lin_vels_[frame_];
 }
 
 Eigen::Vector3f WbcMotionLoader::anchor_ang_vel_w() const
 {
-  return anchor_ang_vels_[frame];
+  return anchor_ang_vels_[frame_];
 }
 
 Eigen::VectorXf WbcMotionLoader::joint_pos() const
 {
-  return dof_positions_[frame];
+  return dof_positions_[frame_];
 }
 
 float WbcMotionLoader::ref_base_height(float env_origin_z) const
@@ -162,7 +162,7 @@ std::vector<float> WbcMotionLoader::ref_joint_pos() const
 
 std::vector<float> WbcMotionLoader::ref_joint_vel() const
 {
-  const Eigen::VectorXf jv = dof_velocities_[frame];
+  const Eigen::VectorXf jv = dof_velocities_[frame_];
   std::vector<float> out(jv.size());
   for (int i = 0; i < jv.size(); ++i) {
     out[i] = jv[i];

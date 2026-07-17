@@ -111,7 +111,7 @@ bool MotionClipLibrary::loadClipAt(int index)
     current_index_ + 1,
     clips_.size(),
     clip.name,
-    loader_->duration);
+    loader_->duration());
   return true;
 }
 
@@ -144,6 +144,17 @@ bool MotionClipLibrary::activateSelectedBrowsable()
   return loadClipAt(selected_browsable_index_);
 }
 
+bool MotionClipLibrary::selectBrowsableByName(const std::string& name)
+{
+  for (size_t i = 0; i < clips_.size(); ++i) {
+    if (clips_[i].name == name) {
+      selected_browsable_index_ = static_cast<int>(i);
+      return loadClipAt(selected_browsable_index_);
+    }
+  }
+  return false;
+}
+
 bool MotionClipLibrary::selectPoseClip(const std::string& key)
 {
   const auto it = pose_clips_.find(key);
@@ -170,7 +181,7 @@ bool MotionClipLibrary::selectPoseClip(const std::string& key)
     "Pose clip [{}] {} ({:.2f}s)",
     key,
     it->second.name,
-    loader_->duration);
+    loader_->duration());
   return true;
 }
 

@@ -26,9 +26,9 @@ uv run wbc-mjlab-train --task Wbc-G1 --dataset lafan
 
 See [wbc-mjlab docs](https://wbc-mjlab.github.io/wbc-mjlab/) for datasets, motion conversion, and export. Bundled runtime clips live under `config/clips/` (`manifest.yaml`).
 
-**Standing:** Passive → FixStand (L2 + D-pad Up) → WBC tracking (R2 + A)
+**Standing:** Passive → FixStand (L2 + D-pad Up) → WBC (R2 + A). Clips/Gen on `wbc_reference_node`.
 
-**From floor:** Passive → FloorReady (L2 + D-pad Down) → WBC + getup (R2 + Y)
+**From floor:** Passive → FloorReady (L2 + D-pad Down) → WBC (R2 + A) → getup on the reference node (D-pad up).
 
 ## Build and run
 
@@ -42,17 +42,28 @@ mkdir -p build && cd build && cmake .. && make -j
 
 ## Joystick
 
+**`wbc_reference_node`** (user interaction — requires `reference_source: dds`):
+
+| Action | Buttons |
+|--------|---------|
+| Browse clips | RT + D-pad right / left |
+| Play selected clip | A |
+| Liedown / Getup | D-pad down / up |
+| Enter Gen | RT + Y |
+| Back to clip select | RT + X |
+
+**`wbc_g1_ctrl`** FSM (enable policy / motors):
+
 | Action | Buttons |
 |--------|---------|
 | FixStand (standing) | L2 + D-pad Up |
 | Floor pose (getup frame 0) | L2 + D-pad Down |
-| WBC tracking (standing) | R2 + A (from FixStand) |
-| WBC + getup (from floor) | R2 + Y (from FloorReady) |
+| Enter WBC tracking | R2 + A (from FixStand or FloorReady) |
 | Passive | L2 + B |
-| Select clip | RT + D-pad right / left (standing only) |
-| Play selected clip | A |
-| Liedown | D-pad down (when idle: select mode or after clip finishes; auto-plays) |
-| Getup | D-pad up (when down and idle; auto-plays) |
+
+From floor: FloorReady → R2+A into WBC, then D-pad up on the **reference node** for getup (`initial_up: false` if you start down).
+
+See `docs/architecture.md`.
 
 ## Dependencies
 

@@ -3,6 +3,52 @@ policy_dir: config/policy/wbc
 clips_dir: config/clips
 clips_manifest: manifest.yaml
 
+# Reference source for Wbc_Tracking:
+#   dds   — wbc_reference_node owns clips/Gen/getup (recommended)
+#   clips — legacy single-process: local NPZ + in-ctrl joystick
+reference_source: dds
+
+# Isolated from Unitree rt/lowstate|lowcmd (domain 0) and estimators (domain 100).
+reference_dds:
+  domain_id: 101
+  interface: lo
+  topic: wbc/ref/command
+
+# User interaction + Arc publisher (clips, Gen, getup/liedown).
+reference_node:
+  mode: clips          # initial: clips | gen
+  # clip: walk_01
+  loop: false          # after browsable clip ends → select
+  hz: 50
+  autoplay: false      # start in clip select (hold frozen frame)
+  initial_up: true     # false after FloorReady: require getup before Gen
+  gen_dir: config/policy/gen
+  pose_clips:
+    getup: getup_01
+    liedown: liedown_01
+  # clip_next: RT + right.on_pressed
+  # clip_prev: RT + left.on_pressed
+  # clip_play: A.on_pressed
+  # clip_getup: up.on_pressed
+  # clip_liedown: down.on_pressed
+  mode_gen: RT + Y.on_pressed      # enter Gen locomotion
+  mode_clips: RT + X.on_pressed    # return to clip select
+  # Gen-only height teleop (plain D-pad; Y without RT so RT+Y still enters Gen)
+  height_up: up.on_pressed
+  height_down: down.on_pressed
+  height_reset: RB + Y.on_pressed    # idle stand height 0.80 m
+  height_step: 0.05                  # meters per D-pad press
+  # Gen stick cruise (no RT) × RT boost → clamp to play_vel_ranges
+  # boost = lerp(vel_boost_min, vel_boost_max, RT); Unitree R2 is mostly digital.
+  vel_boost_min: 1.0
+  vel_boost_max: 2.5
+  cruise_lin_vel_x: [-0.7, 2.0]
+  cruise_lin_vel_y: [-0.8, 0.8]
+  cruise_ang_vel_z: [-2.0, 2.0]
+  # infer_log_every: 50            # log Gen ONNX timing every N steps (0=off)
+
+gen_dir: config/policy/gen
+
 FSM:
   _:
     Passive:
@@ -66,7 +112,8 @@ FSM:
   FloorReady:
     transitions:
       Passive: LT + B.on_pressed
-      Wbc_Tracking: RT + Y.on_pressed
+      # Same enable as FixStand — leaves RT+Y free for Gen on the reference node.
+      Wbc_Tracking: RT + A.on_pressed
     ts: [0, 2]
     kp: [
       100,100,100,150,40,40,
@@ -83,6 +130,9 @@ FSM:
       10,10,10,10,10,10,10,
     ]
 
+  # Motors + WBC ONNX only. Clip/Gen UX is on wbc_reference_node when
+  # reference_source=dds. Legacy clip keys below are used only if you switch
+  # back to reference_source=clips.
   Wbc_Tracking:
     transitions:
       Passive: LT + B.on_pressed

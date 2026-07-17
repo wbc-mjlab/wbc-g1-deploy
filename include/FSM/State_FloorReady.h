@@ -42,8 +42,15 @@ private:
     static std::vector<float> loadGetupFrameZero()
     {
         const auto& root = param::config;
-        const auto& wbc_cfg = param::config["FSM"]["Wbc_Tracking"];
-        const std::string clip_name = wbc_cfg["pose_clips"]["getup"].as<std::string>("getup_01");
+        std::string clip_name = "getup_01";
+        if (root["reference_node"] && root["reference_node"]["pose_clips"] &&
+            root["reference_node"]["pose_clips"]["getup"]) {
+          clip_name =
+            root["reference_node"]["pose_clips"]["getup"].as<std::string>();
+        } else {
+          const auto& wbc_cfg = param::config["FSM"]["Wbc_Tracking"];
+          clip_name = wbc_cfg["pose_clips"]["getup"].as<std::string>("getup_01");
+        }
 
         std::filesystem::path clips_dir = param::config_string(
             root, "clips_dir", "config/clips");

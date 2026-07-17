@@ -4,8 +4,15 @@
 #pragma once
 
 #include "onnxruntime_cxx_api.h"
-#include <iostream>
+
+#include <spdlog/spdlog.h>
+
+#include <chrono>
+#include <cstring>
 #include <mutex>
+#include <string>
+#include <unordered_map>
+#include <vector>
 
 namespace isaaclab
 {
@@ -13,6 +20,7 @@ namespace isaaclab
 class Algorithms
 {
 public:
+    virtual ~Algorithms() = default;
     virtual std::vector<float> act(std::unordered_map<std::string, std::vector<float>> obs) = 0;
 
     std::vector<float> get_action()
@@ -20,7 +28,10 @@ public:
         std::lock_guard<std::mutex> lock(act_mtx_);
         return action;
     }
-    
+
+    /// Wall time of the last ``act()`` call (ONNX Session::Run), milliseconds.
+    virtual double last_infer_ms() const { return 0.0; }
+
     std::vector<float> action;
 protected:
     std::mutex act_mtx_;
@@ -29,7 +40,13 @@ protected:
 class OrtRunner : public Algorithms
 {
 public:
-    OrtRunner(std::string model_path)
+    /// ``log_every_n``: print infer timing every N runs (0 = silent).
+    explicit OrtRunner(
+      std::string model_path,
+      std::string label = "onnx",
+      int log_every_n = 0)
+    : label_(std::move(label))
+    , log_every_n_(log_every_n > 0 ? log_every_n : 0)
     {
         // Init Model
         env = Ort::Env(ORT_LOGGING_LEVEL_WARNING, "onnx_model");
@@ -61,7 +78,7 @@ public:
         action.resize(output_shape[1]);
     }
 
-    std::vector<float> act(std::unordered_map<std::string, std::vector<float>> obs)
+    std::vector<float> act(std::unordered_map<std::string, std::vector<float>> obs) override
     {
         auto memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
 
@@ -74,16 +91,44 @@ public:
 
         // Create input tensors
         std::vector<Ort::Value> input_tensors;
-        for(int i(0); i<input_names.size(); ++i)
-        {
-            const std::string name_str(input_names[i]);
+        for (int i(0); i < static_cast<int>(input_names.size()); ++i) {
+            const std::string name_str(input_names[static_cast<size_t>(i)]);
             auto& input_data = obs.at(name_str);
-            auto input_tensor = Ort::Value::CreateTensor<float>(memory_info, input_data.data(), input_sizes[i], input_shapes[i].data(), input_shapes[i].size());
+            auto input_tensor = Ort::Value::CreateTensor<float>(
+              memory_info,
+              input_data.data(),
+              input_sizes[static_cast<size_t>(i)],
+              input_shapes[static_cast<size_t>(i)].data(),
+              input_shapes[static_cast<size_t>(i)].size());
             input_tensors.push_back(std::move(input_tensor));
         }
 
-        // Run the model
-        auto output_tensor = session->Run(Ort::RunOptions{nullptr}, input_names.data(), input_tensors.data(), input_tensors.size(), output_names.data(), 1);
+        const auto t0 = std::chrono::steady_clock::now();
+        auto output_tensor = session->Run(
+          Ort::RunOptions{nullptr},
+          input_names.data(),
+          input_tensors.data(),
+          input_tensors.size(),
+          output_names.data(),
+          1);
+        const auto t1 = std::chrono::steady_clock::now();
+        last_infer_ms_ = std::chrono::duration<double, std::milli>(t1 - t0).count();
+        ++infer_count_;
+        infer_ms_sum_ += last_infer_ms_;
+        if (last_infer_ms_ > infer_ms_max_) {
+            infer_ms_max_ = last_infer_ms_;
+        }
+        if (log_every_n_ > 0 &&
+            (infer_count_ == 1 ||
+             infer_count_ % static_cast<uint64_t>(log_every_n_) == 0)) {
+            spdlog::info(
+              "{} infer: last={:.3f} ms  avg={:.3f} ms  max={:.3f} ms  n={}",
+              label_,
+              last_infer_ms_,
+              infer_ms_sum_ / static_cast<double>(infer_count_),
+              infer_ms_max_,
+              infer_count_);
+        }
 
         // Copy output data
         auto floatarr = output_tensor.front().GetTensorMutableData<float>();
@@ -92,7 +137,16 @@ public:
         return action;
     }
 
+    double last_infer_ms() const override { return last_infer_ms_; }
+
 private:
+    std::string label_;
+    int log_every_n_ = 0;
+    double last_infer_ms_ = 0.0;
+    double infer_ms_sum_ = 0.0;
+    double infer_ms_max_ = 0.0;
+    uint64_t infer_count_ = 0;
+
     Ort::Env env;
     Ort::SessionOptions session_options;
     std::unique_ptr<Ort::Session> session;

@@ -3,6 +3,9 @@ thirdparty/onnxruntime-*/
 log/
 logs/
 
+# Large Gen ONNX (install via wbc-gen-export)
+config/policy/gen/params/generator.onnx
+
 # Python
 __pycache__/
 *.py[cod]

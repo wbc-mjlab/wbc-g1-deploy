@@ -33,6 +33,7 @@ endif()
 include_directories(
   /usr/include/eigen3
   ${REPO_ROOT}/include
+  ${REPO_ROOT}/include/idl
   ${ONNXRUNTIME_DIR}/include
   ${REPO_ROOT}/thirdparty/cnpy
 )
@@ -56,11 +57,19 @@ set(WBC_LIB_SRC
   ${REPO_ROOT}/src/MotionClipLibrary.cpp
   ${REPO_ROOT}/src/State_WbcTracking.cpp
   ${REPO_ROOT}/src/WbcMotionLoader.cpp
+  ${REPO_ROOT}/src/DdsMotionReference.cpp
+  ${REPO_ROOT}/src/WbcReferencePublisher.cpp
+  ${REPO_ROOT}/src/pack_arc_reference.cpp
+  ${REPO_ROOT}/src/gen_params.cpp
+  ${REPO_ROOT}/src/gen_waypoints.cpp
+  ${REPO_ROOT}/src/gen_obs_builder.cpp
+  ${REPO_ROOT}/src/GenReferenceEngine.cpp
   ${REPO_ROOT}/src/wbc_mdp_registrations.cpp
   ${REPO_ROOT}/src/motion_npz.cpp
   ${REPO_ROOT}/src/motion_reference_obs.cpp
   ${REPO_ROOT}/src/wbc_tracking_params.cpp
   ${REPO_ROOT}/src/pd_torque_clip.cpp
+  ${REPO_ROOT}/src/idl/WbcReference.cpp
 )
 
 add_library(${PROJECT_NAME}_lib ${WBC_LIB_SRC})

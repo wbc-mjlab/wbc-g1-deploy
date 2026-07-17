@@ -1,56 +1,43 @@
 #include "motion_reference_obs.h"
 
-#include "WbcMotionLoader.h"
+#include "IMotionReference.h"
 
-#include <spdlog/spdlog.h>
-
-#include <array>
 #include <stdexcept>
 #include <unordered_map>
 
 namespace wbc_deploy {
 namespace {
 
-constexpr std::array<float, 3> kGravityW = {0.0f, 0.0f, -1.0f};
+using RefFn = std::vector<float> (*)(const IMotionReference&, float);
 
-std::array<float, 3> quatApplyInverse(
-  const Eigen::Quaternionf& q,
-  const std::array<float, 3>& v)
+std::vector<float> ref_base_height_fn(const IMotionReference& ref, float env_origin_z)
 {
-  const Eigen::Vector3f out = q.conjugate() * Eigen::Vector3f(v[0], v[1], v[2]);
-  return {out.x(), out.y(), out.z()};
+  return {ref.ref_base_height(env_origin_z)};
 }
 
-using RefFn = std::vector<float> (*)(const WbcMotionLoader&, float);
-
-std::vector<float> ref_base_height_fn(const WbcMotionLoader& loader, float env_origin_z)
+std::vector<float> ref_base_lin_vel_b_fn(const IMotionReference& ref, float)
 {
-  return {loader.ref_base_height(env_origin_z)};
+  return ref.ref_base_lin_vel_b();
 }
 
-std::vector<float> ref_base_lin_vel_b_fn(const WbcMotionLoader& loader, float)
+std::vector<float> ref_base_ang_vel_b_fn(const IMotionReference& ref, float)
 {
-  return loader.ref_base_lin_vel_b();
+  return ref.ref_base_ang_vel_b();
 }
 
-std::vector<float> ref_base_ang_vel_b_fn(const WbcMotionLoader& loader, float)
+std::vector<float> ref_gravity_b_fn(const IMotionReference& ref, float)
 {
-  return loader.ref_base_ang_vel_b();
+  return ref.ref_gravity_b();
 }
 
-std::vector<float> ref_gravity_b_fn(const WbcMotionLoader& loader, float)
+std::vector<float> ref_joint_pos_fn(const IMotionReference& ref, float)
 {
-  return loader.ref_gravity_b();
+  return ref.ref_joint_pos();
 }
 
-std::vector<float> ref_joint_pos_fn(const WbcMotionLoader& loader, float)
+std::vector<float> ref_joint_vel_fn(const IMotionReference& ref, float)
 {
-  return loader.ref_joint_pos();
-}
-
-std::vector<float> ref_joint_vel_fn(const WbcMotionLoader& loader, float)
-{
-  return loader.ref_joint_vel();
+  return ref.ref_joint_vel();
 }
 
 const std::unordered_map<std::string, RefFn>& reference_fn_table()
@@ -82,7 +69,7 @@ const std::vector<std::string>& supported_reference_observation_names()
 }
 
 std::vector<float> motion_reference_observation(
-  const WbcMotionLoader& loader,
+  const IMotionReference& ref,
   const std::string& name,
   float env_origin_z)
 {
@@ -91,20 +78,20 @@ std::vector<float> motion_reference_observation(
   if (it == table.end()) {
     throw std::runtime_error("Unsupported motion reference observation: " + name);
   }
-  return it->second(loader, env_origin_z);
+  return it->second(ref, env_origin_z);
 }
 
 std::vector<float> motion_reference_stack(
-  const WbcMotionLoader& loader,
+  const IMotionReference& ref,
   float env_origin_z)
 {
   std::vector<float> out;
-  out.reserve(10 + static_cast<size_t>(loader.ref_joint_pos().size()));
+  out.reserve(10 + static_cast<size_t>(ref.ref_joint_pos().size()));
   for (const auto& name : supported_reference_observation_names()) {
     if (name == "ref_joint_vel") {
       continue;
     }
-    const auto chunk = motion_reference_observation(loader, name, env_origin_z);
+    const auto chunk = motion_reference_observation(ref, name, env_origin_z);
     out.insert(out.end(), chunk.begin(), chunk.end());
   }
   return out;
