@@ -33,32 +33,26 @@ See [wbc-mjlab docs](https://wbc-mjlab.github.io/wbc-mjlab/) for datasets, motio
 | `wbc_g1_ctrl` | Motors + FSM + WBC ONNX (tracks the reference Arc) |
 | `wbc_reference_node` | Clips / Gen / getup / liedown — publishes the Arc on DDS domain 101 |
 
-Default `reference_source: dds`. Full Gen + ctrl bring-up: [`docs/gen_controller.md`](docs/gen_controller.md).
+Default `reference_source: dds`.
 
-## Quick start (stand or floor)
+- **Operator recipes** (stand / floor → Gen → clips): [`docs/operator.md`](docs/operator.md)
+- Launch / tmux: [`docs/gen_controller.md`](docs/gen_controller.md)
 
-Run both binaries on the same NIC (e.g. `eth0` or `lo`):
+## Quick start
 
 ```bash
 ./build/wbc_g1_ctrl --network=eth0
-./build/wbc_reference_node --network=eth0   # starts in Standing (idle hold)
+./build/wbc_reference_node --network=eth0
 ```
 
-Unitree buttons: **LT/RT ≈ L2/R2**, **A/B/X/Y** as labeled.
+| Start | Prep | Enable | Then |
+|-------|------|--------|------|
+| **Standing** | `LT + D-pad up` | `RT + A` | `RT + Y` → Gen, or browse clips |
+| **Floor** (already down) | `LT + D-pad down` | `RT + A` | `RT + D-pad up` getup → `RT + Y` Gen |
 
-### Standing bring-up
+Leave Gen → clips: `RT + X`. Full tables: [`docs/operator.md`](docs/operator.md).
 
-1. `LT + D-pad up` — FixStand (ctrl) + Standing idle hold (ref)
-2. `RT + A` — enable WBC (tracks idle frame 0)
-3. Browse / play clips, or `RT + Y` for Gen (see controls below)
-
-### Floor bring-up
-
-1. `LT + D-pad down` — FloorReady (ctrl) + **Down** hold getup frame 0 (ref)
-2. `RT + A` — enable WBC only (still holding getup frame 0; does **not** play getup)
-3. `RT + D-pad up` — play getup → Standing → clips / Gen unlocked
-
-After liedown (`RT + D-pad down` while Standing), the ref returns to **Down** — same gate: only `RT + up` can getup.
+Unitree: **LT/RT ≈ L2/R2**.
 
 ## Build and run
 
@@ -72,57 +66,7 @@ mkdir -p build && cd build && cmake .. && make -j
 
 For Gen + controller in tmux: [`docs/gen_controller.md`](docs/gen_controller.md).
 
-## Joystick controls
-
-### Controller (`wbc_g1_ctrl`) — motors / policy enable
-
-| Action | Buttons |
-|--------|---------|
-| FixStand (standing prep) | `LT + D-pad up` |
-| FloorReady (lying prep) | `LT + D-pad down` |
-| Enable WBC tracking | `RT + A` (from FixStand **or** FloorReady) |
-| Passive | `LT + B` |
-
-### Reference node — Standing (clips)
-
-After stand start, or after getup finishes. Browse / play / Gen / liedown:
-
-| Action | Buttons |
-|--------|---------|
-| Browse clips | `RT + D-pad left / right` |
-| Play selected clip | `A` (**without** RT — so `RT+A` stays policy enable) |
-| Liedown | `RT + D-pad down` |
-| Enter Gen | `RT + Y` |
-| Return from Gen to idle hold | `RT + X` |
-
-### Reference node — Down (floor / after liedown)
-
-Only getup is allowed until standing again:
-
-| Action | Buttons |
-|--------|---------|
-| Hold / track | getup frame 0 (automatic after `LT+down` or liedown) |
-| Enable policy | `RT + A` on **ctrl** (ref keeps publishing getup frame 0) |
-| Play getup | `RT + D-pad up` |
-| Blocked | browse, play idle, Gen, liedown, stand-prep shortcut |
-
-### Reference node — Gen mode
-
-Enter with `RT + Y` while Standing. Height works **only** here:
-
-| Action | Buttons |
-|--------|---------|
-| Forward / back (`vx`) | Left stick **Y** |
-| Strafe (`vy`) | Left stick **X** |
-| Yaw (`wz`) | Right stick **X** |
-| Boost lin + ang vel | Hold **RT** (scales cruise, then clamps to play ranges) |
-| Height up / down | D-pad up / down (**without** RT) |
-| Height reset to idle (~0.80 m) | `RB + Y` |
-| Back to Standing idle hold | `RT + X` (or `A`) |
-
-Logging is quiet by default (mode / clip changes only). Pass `--verbose` on either binary for step heartbeats / PD clip diagnostics.
-
-See also `docs/architecture.md`.
+Joystick / stand / floor / Gen / back to clips: [`docs/operator.md`](docs/operator.md).
 
 ## Dependencies
 

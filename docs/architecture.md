@@ -75,6 +75,8 @@ Prep on the reference node mirrors Passive (same buttons):
 
 Boot default is `reference_node.initial_up` (true → stand hold, false → floor hold).
 
+Operator recipes: [`operator.md`](operator.md).
+
 ## Bring-up
 
 ```bash
