@@ -40,6 +40,8 @@ mkdir -p build && cd build && cmake .. && make -j
 
 `--network` selects the Unitree DDS interface for `rt/lowstate` / `rt/lowcmd` (domain 0).
 
+For running Gen reference + controller together in tmux, see [`docs/gen_controller.md`](docs/gen_controller.md).
+
 ## Joystick
 
 **`wbc_reference_node`** (user interaction — requires `reference_source: dds`):
