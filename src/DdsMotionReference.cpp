@@ -141,6 +141,22 @@ void DdsMotionReference::onMessage(const void* msg)
   }
 
   std::lock_guard<std::mutex> lock(mtx_);
+  const auto& meta = ref->meta();
+  if (!meta.empty() && !meta[0].values().empty()) {
+    noteEpisodeLocked(static_cast<uint64_t>(meta[0].values()[0]));
+  }
+
+  // Floor hold: keep local getup frame 0 Arc, but still watch episode + clip
+  // name so ctrl can release only when getup actually starts (not idle/play).
+  if (hold_arc_.load()) {
+    if (!meta.empty()) {
+      clip_name_ = meta[0].name();
+    }
+    time_frame_ = ref->step();
+    mode_ = ref->mode().empty() ? "stream" : ref->mode();
+    return;
+  }
+
   for (int i = 0; i < kArcDim; ++i) {
     arc_[static_cast<size_t>(i)] = arc[static_cast<size_t>(i)];
   }
@@ -158,12 +174,8 @@ void DdsMotionReference::onMessage(const void* msg)
   }
   time_frame_ = ref->step();
   mode_ = ref->mode().empty() ? "stream" : ref->mode();
-  const auto& meta = ref->meta();
   if (!meta.empty()) {
     clip_name_ = meta[0].name();
-    if (!meta[0].values().empty()) {
-      noteEpisodeLocked(static_cast<uint64_t>(meta[0].values()[0]));
-    }
   }
   has_sample_.store(true);
 }
@@ -187,7 +199,8 @@ void DdsMotionReference::applyArcCommand(
   uint64_t time_frame,
   const std::string& mode,
   uint64_t episode,
-  const std::string& clip_name)
+  const std::string& clip_name,
+  bool update_episode)
 {
   if (data == nullptr || n != kArcDim) {
     throw std::invalid_argument("applyArcCommand expects 39 floats");
@@ -212,7 +225,9 @@ void DdsMotionReference::applyArcCommand(
   if (!clip_name.empty()) {
     clip_name_ = clip_name;
   }
-  noteEpisodeLocked(episode);
+  if (update_episode) {
+    noteEpisodeLocked(episode);
+  }
   has_sample_.store(true);
 }
 

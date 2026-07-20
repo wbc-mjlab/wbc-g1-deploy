@@ -121,12 +121,19 @@ wbc_deploy::GenProprioSample proprio_from_articulation(
 }
 
 struct ClipUiState {
-  bool robot_is_up = true;
+  /// Standing: idle / browse / Gen allowed.
+  /// Down: only getup may be published or played (floor start or after liedown).
+  enum class BodyState { Standing, Down };
+
+  BodyState body = BodyState::Standing;
   bool awaiting_select = true;
   bool playing = false;
   float play_t = 0.0f;
   bool playback_finished = false;
   bool was_playback_finished = false;
+
+  bool is_up() const { return body == BodyState::Standing; }
+  bool is_down() const { return body == BodyState::Down; }
 };
 
 }  // namespace
@@ -162,6 +169,7 @@ int main(int argc, char** argv)
     ("vy", po::value<float>()->default_value(0.0f), "default / dry-run lin_vel_y")
     ("wz", po::value<float>()->default_value(0.0f), "default / dry-run ang_vel_z")
     ("dry-run", po::bool_switch(), "no Unitree lowstate (stdin + standing proprio)")
+    ("verbose", "debug logs (periodic step status, joy edges)")
     ("network,n", po::value<std::string>()->default_value(""), "Unitree DDS network iface");
 
   po::variables_map vm;
@@ -171,18 +179,25 @@ int main(int argc, char** argv)
     std::cout << desc << std::endl;
     std::cout
       << "\nJoystick (same as WBC tracking clips):\n"
-      << "  RT+left/right  browse   A  play   up/down  getup/liedown\n"
-      << "  RT+Y           enter Gen    RT+X  return to clip select\n"
+      << "  LT+up / LT+down  Standing (idle) / Down (getup frame 0)\n"
+      << "  RT+A on ctrl     enable policy (stand→idle ref, floor→getup frame 0)\n"
+      << "  While Down:      RT+up = getup only (A/browse/Gen blocked)\n"
+      << "  While Standing:  RT+L/R browse, A play (!RT), RT+Y Gen, RT+down=liedown\n"
+      << "  RT+X             return to idle stand hold from Gen\n"
       << "Gen mode:\n"
-      << "  sticks         cruise vel; hold RT to boost (×1..×2.5)\n"
-      << "  up/down        raise/lower height setpoint\n"
+      << "  L-stick Y/X   vx forward/back, vy strafe\n"
+      << "  R-stick X     wz yaw; hold RT to boost lin+ang vel\n"
+      << "  Gen height:      D-pad up/down without RT (only while Gen active)\n"
       << "  RB+Y           reset height to idle default\n"
-      << "Getup/liedown always force clips mode (from clips; use RT+X then up/down).\n";
+      << "Getup/liedown always force clips mode (from clips; use RT+X then up/down).\n"
+      << "Logging: quiet by default (mode/clip changes only); --verbose for step status.\n";
     return 0;
   }
   if (vm["no-autoplay"].as<bool>()) {
     autoplay = false;
   }
+  spdlog::set_level(
+    vm.count("verbose") ? spdlog::level::debug : spdlog::level::info);
 
   std::signal(SIGINT, on_signal);
   std::signal(SIGTERM, on_signal);
@@ -219,7 +234,7 @@ int main(int argc, char** argv)
     }
   }
   MotionClipLibrary library(clips_dir, manifest, step_dt, "torso_link", pose_clips);
-  if (!clip_name.empty() && !library.selectBrowsableByName(clip_name)) {
+  if (!clip_name.empty() && !library.selectBrowsableByName(clip_name, true)) {
     spdlog::error("Unknown clip '{}'", clip_name);
     return 1;
   }
@@ -245,26 +260,38 @@ int main(int argc, char** argv)
     spdlog::warn("Gen unavailable ({}). Clips-only until params installed.", exc.what());
   }
 
+  // Prep pose for policy start (same buttons as Passive → FixStand / FloorReady).
+  // Stand: hold first idle frame. Floor: hold getup frame 0 (lying).
+  // Policy enable on ctrl is always RT+A from either prep state.
+  const std::string expr_stand_prep = yaml_str(
+    ref_cfg,
+    "stand_prep",
+    "LT + up.on_pressed");
+  const std::string expr_floor_prep = yaml_str(
+    ref_cfg,
+    "floor_prep",
+    "LT + down.on_pressed");
   // Joystick exprs — match ctrl; mode switch configurable on reference_node.
   const std::string expr_next =
     yaml_str(ref_cfg, "clip_next", yaml_str(track_cfg, "clip_next", "RT + right.on_pressed"));
   const std::string expr_prev =
     yaml_str(ref_cfg, "clip_prev", yaml_str(track_cfg, "clip_prev", "RT + left.on_pressed"));
   const std::string expr_play =
-    yaml_str(ref_cfg, "clip_play", yaml_str(track_cfg, "clip_play", "A.on_pressed"));
+    yaml_str(ref_cfg, "clip_play", yaml_str(track_cfg, "clip_play", "!RT + A.on_pressed"));
+  // Down-only getup (after FloorReady / liedown). RT+A enables policy; RT+up plays getup.
   const std::string expr_getup =
-    yaml_str(ref_cfg, "clip_getup", yaml_str(track_cfg, "clip_getup", "up.on_pressed"));
+    yaml_str(ref_cfg, "clip_getup", yaml_str(track_cfg, "clip_getup", "RT + up.on_pressed"));
   const std::string expr_liedown =
-    yaml_str(ref_cfg, "clip_liedown", yaml_str(track_cfg, "clip_liedown", "down.on_pressed"));
+    yaml_str(ref_cfg, "clip_liedown", yaml_str(track_cfg, "clip_liedown", "RT + down.on_pressed"));
   const std::string expr_mode_gen =
     yaml_str(ref_cfg, "mode_gen", "RT + Y.on_pressed");
   const std::string expr_mode_clips =
     yaml_str(ref_cfg, "mode_clips", "RT + X.on_pressed");
-  // Gen-only height teleop (plain D-pad; RB+Y resets idle — RT+Y still enters Gen).
+  // Gen-only height: require !RT so RT+up / RT+down stay getup / liedown.
   const std::string expr_height_up =
-    yaml_str(ref_cfg, "height_up", "up.on_pressed");
+    yaml_str(ref_cfg, "height_up", "!RT + up.on_pressed");
   const std::string expr_height_down =
-    yaml_str(ref_cfg, "height_down", "down.on_pressed");
+    yaml_str(ref_cfg, "height_down", "!RT + down.on_pressed");
   const std::string expr_height_reset =
     yaml_str(ref_cfg, "height_reset", "RB + Y.on_pressed");
   const float height_step =
@@ -280,6 +307,8 @@ int main(int argc, char** argv)
   auto height_up_fn = compileJoystickExpr(expr_height_up);
   auto height_down_fn = compileJoystickExpr(expr_height_down);
   auto height_reset_fn = compileJoystickExpr(expr_height_reset);
+  auto stand_prep_fn = compileJoystickExpr(expr_stand_prep);
+  auto floor_prep_fn = compileJoystickExpr(expr_floor_prep);
 
   // --- Unitree lowstate FIRST (joystick + Gen proprio), then DDS pub ---
   // Creating the domain-101 publisher must not run before ChannelFactory::Init,
@@ -327,29 +356,12 @@ int main(int argc, char** argv)
   wbc_deploy::WbcReferencePublisher pub(dds);
 
   ClipUiState ui;
-  ui.robot_is_up = true;
-  if (ref_cfg["initial_up"]) {
-    ui.robot_is_up = ref_cfg["initial_up"].as<bool>();
-  }
+  // initial_up selects stand vs floor hold at boot (overridable by LT+up/down).
+  const bool initial_up =
+    ref_cfg["initial_up"] ? ref_cfg["initial_up"].as<bool>() : true;
+  ui.body = initial_up ? ClipUiState::BodyState::Standing : ClipUiState::BodyState::Down;
   uint64_t episode = 0;
-  if (autoplay && mode == ActiveMode::Clips) {
-    ui.awaiting_select = false;
-    ui.playing = true;
-    ui.play_t = 0.0f;
-    ++episode;
-    library.resetPlayback(empty_articulation_data(), 0.0f);
-  } else if (mode == ActiveMode::Clips) {
-    ui.awaiting_select = true;
-    ui.playing = false;
-    spdlog::info(
-      "Clip select — selected: {}  (RT+L/R browse, A play)",
-      library.selectedBrowsableName());
-  } else {
-    ui.awaiting_select = false;
-    ui.playing = false;
-    ++episode;
-    spdlog::info("Starting in Gen mode");
-  }
+  // Clip/Gen hold applied after enter_* helpers are defined (see below).
 
   float play_vx_lo = -1.5f;
   float play_vx_hi = 4.0f;
@@ -406,6 +418,7 @@ int main(int argc, char** argv)
 
   spdlog::info(
     "Bindings: next='{}' prev='{}' play='{}' getup='{}' liedown='{}' "
+    "stand_prep='{}' floor_prep='{}' "
     "mode_gen='{}' mode_clips='{}' height_up='{}' height_down='{}' "
     "height_reset='{}' (idle h={:.2f} step={:.2f} range=[{:.2f},{:.2f}])",
     expr_next,
@@ -413,6 +426,8 @@ int main(int argc, char** argv)
     expr_play,
     expr_getup,
     expr_liedown,
+    expr_stand_prep,
+    expr_floor_prep,
     expr_mode_gen,
     expr_mode_clips,
     expr_height_up,
@@ -478,20 +493,74 @@ int main(int argc, char** argv)
   auto next_wake = std::chrono::steady_clock::now();
   uint64_t step = 0;
 
-  auto enter_clip_select = [&](float frozen_t) {
+  /// Stand hold / return to trajectory mode: always publish default idle frame 0
+  /// first, then allow browse/play/Gen (only once Standing).
+  auto enter_stand_hold = [&](const char* hit = nullptr, bool bump_episode = true) {
     mode = ActiveMode::Clips;
+    if (!library.selectDefaultBrowsable()) {
+      spdlog::error("Failed to load default stand idle clip");
+      return;
+    }
+    ui.body = ClipUiState::BodyState::Standing;
     ui.awaiting_select = true;
     ui.playing = false;
-    ui.play_t = frozen_t;
+    ui.play_t = 0.0f;
     ui.playback_finished = false;
     ui.was_playback_finished = false;
-    spdlog::info(
-      "Clip select — selected: {}  (RT+L/R, A play; RT+Y Gen)",
-      library.selectedBrowsableName());
+    if (bump_episode) {
+      ++episode;
+    }
+    if (hit) {
+      spdlog::info(
+        "Hit: {} — Standing: {} frame 0 (browse/play or RT+Y Gen)",
+        hit,
+        library.currentName());
+    } else {
+      spdlog::info(
+        "Standing: {} frame 0 (ctrl RT+A starts policy; RT+L/R browse, A play)",
+        library.currentName());
+    }
+  };
+
+  /// Down (FloorReady / after liedown): hold getup frame 0. Only getup may be
+  /// published or played until Standing again — never idle / Gen / browse.
+  auto enter_floor_hold = [&](const char* hit = nullptr, bool bump_episode = true) {
+    mode = ActiveMode::Clips;
+    if (!library.selectPoseClip("getup")) {
+      spdlog::error("Failed to load getup pose for Down state");
+      return;
+    }
+    ui.body = ClipUiState::BodyState::Down;
+    ui.awaiting_select = false;
+    ui.playing = false;
+    ui.play_t = 0.0f;
+    ui.playback_finished = false;
+    ui.was_playback_finished = false;
+    if (bump_episode) {
+      ++episode;
+    }
+    if (hit) {
+      spdlog::info(
+        "Hit: {} — Down: {} frame 0 (RT+A = enable policy; RT+up = getup)",
+        hit,
+        library.currentName());
+    } else {
+      spdlog::info(
+        "Down: {} frame 0 (RT+A = enable policy; RT+up = getup)",
+        library.currentName());
+    }
   };
 
   auto start_clip_playback = [&]() {
     mode = ActiveMode::Clips;
+    // Safety: while Down, never start anything except getup.
+    if (ui.is_down() &&
+        library.currentKind() != MotionClipLibrary::ClipKind::PoseGetup) {
+      if (!library.selectPoseClip("getup")) {
+        spdlog::error("Down state refused non-getup playback");
+        return;
+      }
+    }
     ui.awaiting_select = false;
     ui.playing = true;
     ui.play_t = 0.0f;
@@ -499,17 +568,16 @@ int main(int argc, char** argv)
     ui.was_playback_finished = false;
     ++episode;
     library.resetPlayback(empty_articulation_data(), 0.0f);
-    spdlog::info(
-      "Playing clip: {} (episode {})", library.currentName(), episode);
+    spdlog::info("Playing clip: {}", library.currentName());
   };
 
-  auto enter_gen = [&]() {
+  auto enter_gen = [&](const char* hit) {
     if (!gen) {
       spdlog::warn("Gen not loaded — staying in clips");
       return;
     }
-    if (!ui.robot_is_up) {
-      spdlog::warn("Robot down — getup before Gen");
+    if (ui.is_down()) {
+      spdlog::warn("Down — getup before Gen");
       return;
     }
     mode = ActiveMode::Gen;
@@ -534,11 +602,31 @@ int main(int argc, char** argv)
       }
     }
     spdlog::info(
-      "Switched to Gen episode {} (sticks → cruise vel; RT boost; D-pad height; "
-      "RB+Y=idle {:.2f} m; RT+X → clips)",
-      episode,
+      "Hit: {} — switched to Generator "
+      "(L-stick: Y→vx forward/back, X→vy strafe; R-stick X→wz yaw; "
+      "RT boosts lin+ang vel; D-pad height; RB+Y=idle {:.2f} m; RT+X → clips)",
+      hit,
       default_height);
   };
+
+  // Initial reference pose for policy bring-up (no episode bump yet).
+  if (autoplay && mode == ActiveMode::Clips) {
+    ui.awaiting_select = false;
+    ui.playing = true;
+    ui.play_t = 0.0f;
+    ++episode;
+    library.resetPlayback(empty_articulation_data(), 0.0f);
+    spdlog::info("Autoplay: {}", library.currentName());
+  } else if (mode == ActiveMode::Gen) {
+    ui.awaiting_select = false;
+    ui.playing = false;
+    ++episode;
+    spdlog::info("Starting in Gen mode");
+  } else if (!initial_up) {
+    enter_floor_hold(nullptr, false);
+  } else {
+    enter_stand_hold(nullptr, false);
+  }
 
   while (g_running) {
     // Joystick lives in lowstate->wireless_remote; must call update() every tick
@@ -561,6 +649,8 @@ int main(int argc, char** argv)
     bool do_height_up = false;
     bool do_height_down = false;
     bool do_height_reset = false;
+    bool do_stand_prep = false;
+    bool do_floor_prep = false;
     float cmd_vx = default_vx;
     float cmd_vy = default_vy;
     float cmd_wz = default_wz;
@@ -574,9 +664,14 @@ int main(int argc, char** argv)
       do_liedown = clip_liedown_fn && clip_liedown_fn(joy);
       do_mode_gen = mode_gen_fn && mode_gen_fn(joy);
       do_mode_clips = mode_clips_fn && mode_clips_fn(joy);
-      do_height_up = height_up_fn && height_up_fn(joy);
-      do_height_down = height_down_fn && height_down_fn(joy);
-      do_height_reset = height_reset_fn && height_reset_fn(joy);
+      // Height teleop only while Generator is active (never in clips / Down).
+      if (mode == ActiveMode::Gen) {
+        do_height_up = height_up_fn && height_up_fn(joy);
+        do_height_down = height_down_fn && height_down_fn(joy);
+        do_height_reset = height_reset_fn && height_reset_fn(joy);
+      }
+      do_stand_prep = stand_prep_fn && stand_prep_fn(joy);
+      do_floor_prep = floor_prep_fn && floor_prep_fn(joy);
       // Cruise stick × RT boost (1 → vel_boost_max), then clamp to play ranges.
       const float boost =
         rt_vel_boost(joy.RT(), vel_boost_min, vel_boost_max);
@@ -594,10 +689,12 @@ int main(int argc, char** argv)
         play_wz_hi);
 
       if (do_next || do_prev || do_play || do_getup || do_liedown || do_mode_gen ||
-          do_mode_clips || do_height_up || do_height_down || do_height_reset) {
-        spdlog::info(
+          do_mode_clips || do_height_up || do_height_down || do_height_reset ||
+          do_stand_prep || do_floor_prep) {
+        spdlog::debug(
           "joy edge: next={} prev={} play={} getup={} liedown={} gen={} clips={} "
-          "h_up={} h_down={} h_reset={} RT={} A={} Y={} X={} up={} down={}",
+          "stand={} floor={} h_up={} h_down={} h_reset={} RT={} A={} Y={} X={} "
+          "up={} down={}",
           do_next,
           do_prev,
           do_play,
@@ -605,6 +702,8 @@ int main(int argc, char** argv)
           do_liedown,
           do_mode_gen,
           do_mode_clips,
+          do_stand_prep,
+          do_floor_prep,
           do_height_up,
           do_height_down,
           do_height_reset,
@@ -625,7 +724,7 @@ int main(int argc, char** argv)
     } else if (sc == 3) {
       do_play = true;
     } else if (sc == 4) {
-      // Clips: getup; Gen: height up (same key as joystick D-pad up).
+      // Clips Down: getup; Gen: height up.
       if (mode == ActiveMode::Gen) {
         do_height_up = true;
       } else {
@@ -642,15 +741,47 @@ int main(int argc, char** argv)
     } else if (sc == 8) {
       do_mode_clips = true;
     } else if (sc == 9) {
-      do_height_up = true;
+      if (mode == ActiveMode::Gen) {
+        do_height_up = true;
+      }
     } else if (sc == 10) {
-      do_height_down = true;
+      if (mode == ActiveMode::Gen) {
+        do_height_down = true;
+      }
     } else if (sc == 11) {
-      do_height_reset = true;
+      if (mode == ActiveMode::Gen) {
+        do_height_reset = true;
+      }
     }
 
-    // --- clip / mode FSM (skills always override Gen) ---
-    if (mode == ActiveMode::Clips) {
+    // Prep holds mirror Passive → FixStand / FloorReady so Arc matches robot pose
+    // before the single policy enable (ctrl RT+A).
+    // BodyState::Down: only getup — never idle / Gen / browse.
+    //
+    // Heal: frozen getup pose always means Down (covers missed LT+down while
+    // ctrl already entered FloorReady, or boot --mode gen left body=Standing).
+    if (mode == ActiveMode::Clips && !ui.playing && library.loader() &&
+        library.currentKind() == MotionClipLibrary::ClipKind::PoseGetup) {
+      ui.body = ClipUiState::BodyState::Down;
+      ui.awaiting_select = false;
+    }
+
+    if (do_stand_prep) {
+      if (ui.is_down()) {
+        spdlog::info("Down — getup first (RT+up); stand prep blocked");
+      } else {
+        enter_stand_hold("LT+up");
+      }
+    } else if (do_floor_prep) {
+      enter_floor_hold("LT+down");
+    } else if (do_getup && mode == ActiveMode::Gen) {
+      // Started in Gen or still Gen while ctrl is on FloorReady: RT+up = getup.
+      spdlog::info("Hit: RT+up — leave Gen, play getup");
+      if (library.selectPoseClip("getup")) {
+        ui.body = ClipUiState::BodyState::Down;
+        start_clip_playback();
+      }
+    } else if (mode == ActiveMode::Clips) {
       auto loader = library.loader();
       const float duration = loader ? loader->duration() : 0.0f;
       ui.was_playback_finished = ui.playback_finished;
@@ -660,30 +791,35 @@ int main(int argc, char** argv)
       if (ui.playback_finished && !ui.was_playback_finished) {
         const auto kind = library.currentKind();
         if (kind == MotionClipLibrary::ClipKind::PoseGetup) {
-          ui.robot_is_up = true;
-          enter_clip_select(duration);
+          // Getup done → Standing: idle hold, then Gen/browse/play OK.
+          enter_stand_hold();
         } else if (kind == MotionClipLibrary::ClipKind::PoseLiedown) {
-          ui.robot_is_up = false;
-          ui.playing = false;
-          ui.play_t = duration;
-          spdlog::info("Liedown finished — robot is down");
+          // Liedown done → Down: getup frame 0 only until getup plays.
+          enter_floor_hold("liedown done");
         } else if (kind == MotionClipLibrary::ClipKind::Browsable) {
           if (loop_browsable) {
             ui.play_t = 0.0f;
             library.resetPlayback(empty_articulation_data(), 0.0f);
           } else {
-            enter_clip_select(duration);
+            enter_stand_hold();
           }
         }
       }
 
-      if (!ui.robot_is_up) {
-        if (!ui.playing && do_getup && library.selectPoseClip("getup")) {
-          start_clip_playback();
+      if (ui.is_down()) {
+        // Down: RT+A enables policy on ctrl only; RT+up plays getup.
+        if (!ui.playing && do_getup) {
+          if (library.selectPoseClip("getup")) {
+            start_clip_playback();
+          }
+        } else if (do_mode_gen || do_next || do_prev || do_play || do_liedown) {
+          spdlog::info(
+            "Down — hold getup frame 0; press RT+up to getup "
+            "(RT+A = policy enable only)");
         }
       } else {
         if (do_mode_gen) {
-          enter_gen();
+          enter_gen(sc == 7 ? "stdin G" : "RT+Y");
         } else if (
           do_liedown && (ui.awaiting_select || ui.playback_finished) &&
           library.selectPoseClip("liedown")) {
@@ -698,41 +834,42 @@ int main(int argc, char** argv)
           }
         }
       }
-      if (do_height_up || do_height_down || do_height_reset) {
-        spdlog::info(
-          "Height buttons ignored in clips mode (enter Gen with RT+Y first)");
-      }
-    } else {  // Gen — D-pad is height; getup/liedown only from clips
+      // Height is Gen-only; never consume D-pad here.
+    } else {  // Gen — height teleop active only in this branch
       if (do_mode_clips) {
-        enter_clip_select(0.0f);
+        enter_stand_hold(sc == 8 ? "stdin C" : "RT+X");
       } else if (do_height_reset) {
         const float before = gen_height_cmd;
         gen_height_cmd = default_height;
         if (gen) {
-          // Snap cascade so restore is immediate (not soft low-pass only).
           gen->seed_height(gen_height_cmd);
         }
-        spdlog::info(
-          "Gen height RESET {:.3f} → {:.3f} m (idle, seeded)",
-          before,
-          gen_height_cmd);
+        if (before != gen_height_cmd) {
+          spdlog::info(
+            "Gen height RESET {:.3f} → {:.3f} m (idle, seeded)",
+            before,
+            gen_height_cmd);
+        }
       } else if (do_height_up) {
         const float before = gen_height_cmd;
         gen_height_cmd = clampf(gen_height_cmd + height_step, height_lo, height_hi);
         if (gen) {
           gen->set_height_cmd(gen_height_cmd);
         }
-        spdlog::info("Gen height ↑ {:.3f} → {:.3f} m", before, gen_height_cmd);
+        if (before != gen_height_cmd) {
+          spdlog::info("Gen height ↑ {:.3f} → {:.3f} m", before, gen_height_cmd);
+        }
       } else if (do_height_down) {
         const float before = gen_height_cmd;
         gen_height_cmd = clampf(gen_height_cmd - height_step, height_lo, height_hi);
         if (gen) {
           gen->set_height_cmd(gen_height_cmd);
         }
-        spdlog::info("Gen height ↓ {:.3f} → {:.3f} m", before, gen_height_cmd);
+        if (before != gen_height_cmd) {
+          spdlog::info("Gen height ↓ {:.3f} → {:.3f} m", before, gen_height_cmd);
+        }
       } else if (do_play) {
-        // A while in gen → clip select / play selected
-        enter_clip_select(0.0f);
+        enter_stand_hold(sc == 3 ? "stdin Enter" : "A");
       }
     }
 
@@ -773,7 +910,7 @@ int main(int argc, char** argv)
     }
     if (step == 1 || step % 100 == 0) {
       const bool joy_to = lowstate && lowstate->isJoystickTimeout();
-      spdlog::info(
+      spdlog::debug(
         "step={} active={} clip={} playing={} select={} episode={} joy_timeout={} "
         "vx={:.2f} boost={:.2f} height_cmd={:.3f} ref_h={:.3f}",
         step,

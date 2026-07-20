@@ -47,7 +47,9 @@ While idle in clip-select, the node keeps publishing the frozen frame (episode u
 | `A` | Play selected clip |
 | `sticks` | **Gen:** cruise velocity (default vx ∈ `[-0.7, 1]`) |
 | `RT` (hold) | **Gen:** multiply vx/vy/ωz by `lerp(1, 2.5, RT)`, clamp to `play_vel_ranges` |
-| `up` / `down` | **Clips:** getup / liedown · **Gen:** raise / lower height setpoint |
+| `RT + up` | **Down:** play getup |
+| `RT + down` | **Standing:** play liedown |
+| `up` / `down` (no RT) | **Gen only:** raise / lower height |
 | `RB + Y` | **Gen:** reset height to idle stand (**0.80 m**) |
 | `RT + Y` | Enter **Gen** |
 | `RT + X` | Return to **clip select** |
@@ -55,8 +57,23 @@ While idle in clip-select, the node keeps publishing the frozen frame (episode u
 Cruise / boost: `reference_node.cruise_lin_vel_*`, `vel_boost_min` / `vel_boost_max`. Height: `play_vel_ranges.height` + `height_step`. Unitree wireless R2 is mostly digital, so RT boost is often near on/off.
 
 Ctrl FSM (motors only): FixStand / FloorReady / Passive / enter Wbc_Tracking.
+Policy enable is always **RT+A** from FixStand or FloorReady.
 
-After FloorReady → WBC, set `reference_node.initial_up: false` (or press getup) so the ref node plays getup before Gen.
+Prep on the reference node mirrors Passive (same buttons):
+
+| Input | Reference hold |
+|-------|----------------|
+| `LT + up` | Stand: first idle frame 0 (blocked while down) |
+| `LT + down` | Down: getup frame 0 only |
+
+**Floor / after liedown (`BodyState::Down`):**
+1. `LT+down` → FloorReady + ref **Down** (publishes getup frame 0).
+2. `RT+A` → enable WBC only (tracks getup frame 0; does **not** start getup).
+3. `RT+up` → play getup → **Standing** → Gen / browse unlocked.
+
+**Stand start:** `LT+up` → FixStand → `RT+A` (tracks idle). No getup gate.
+
+Boot default is `reference_node.initial_up` (true → stand hold, false → floor hold).
 
 ## Bring-up
 

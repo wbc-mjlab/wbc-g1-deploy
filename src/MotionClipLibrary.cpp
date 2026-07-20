@@ -75,6 +75,7 @@ MotionClipLibrary::MotionClipLibrary(
     throw std::runtime_error("failed to load default clip");
   }
   selected_browsable_index_ = start_index;
+  default_browsable_index_ = start_index;
 }
 
 const std::string& MotionClipLibrary::selectedBrowsableName() const
@@ -144,11 +145,20 @@ bool MotionClipLibrary::activateSelectedBrowsable()
   return loadClipAt(selected_browsable_index_);
 }
 
-bool MotionClipLibrary::selectBrowsableByName(const std::string& name)
+bool MotionClipLibrary::selectDefaultBrowsable()
+{
+  selected_browsable_index_ = default_browsable_index_;
+  return loadClipAt(default_browsable_index_);
+}
+
+bool MotionClipLibrary::selectBrowsableByName(const std::string& name, bool make_default)
 {
   for (size_t i = 0; i < clips_.size(); ++i) {
     if (clips_[i].name == name) {
       selected_browsable_index_ = static_cast<int>(i);
+      if (make_default) {
+        default_browsable_index_ = selected_browsable_index_;
+      }
       return loadClipAt(selected_browsable_index_);
     }
   }

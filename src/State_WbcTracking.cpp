@@ -3,7 +3,10 @@
 #include "DdsMotionReference.h"
 #include "IMotionReference.h"
 #include "MotionClipLibrary.h"
+#include "WbcMotionLoader.h"
 #include "joystick_expr.h"
+#include "motion_npz.h"
+#include "pack_arc_reference.h"
 #include "pd_torque_clip.h"
 #include "unitree_articulation.h"
 #include "wbc_entry_mode.h"
@@ -23,6 +26,18 @@ State_WbcTracking::~State_WbcTracking()
   exit();
 }
 
+void State_WbcTracking::exit()
+{
+  dds_floor_hold_active_ = false;
+  if (auto dds = std::dynamic_pointer_cast<wbc_deploy::DdsMotionReference>(motion)) {
+    dds->set_hold_arc(false);
+  }
+  policy_thread_running = false;
+  if (policy_thread.joinable()) {
+    policy_thread.join();
+  }
+}
+
 State_WbcTracking::State_WbcTracking(int state_mode, std::string state_string)
 : FSMState(state_mode, state_string)
 {
@@ -35,10 +50,10 @@ State_WbcTracking::State_WbcTracking(int state_mode, std::string state_string)
       param::config_string(root, "policy_dir", "config/policy/wbc")));
 
   const YAML::Node deploy = wbc_deploy::load_policy_config(policy_dir);
-  const float step_dt = deploy["step_dt"].as<float>();
-  std::string anchor_body = "torso_link";
+  step_dt_ = deploy["step_dt"].as<float>();
+  anchor_body_ = "torso_link";
   if (deploy["wbc_tracking"] && deploy["wbc_tracking"]["anchor_body_name"]) {
-    anchor_body = deploy["wbc_tracking"]["anchor_body_name"].as<std::string>();
+    anchor_body_ = deploy["wbc_tracking"]["anchor_body_name"].as<std::string>();
   }
 
   reference_source_ = param::config_string(
@@ -56,7 +71,7 @@ State_WbcTracking::State_WbcTracking(int state_mode, std::string state_string)
     }
     auto dds_cfg = wbc_deploy::load_reference_dds_config(root, cfg);
     motion = std::make_shared<wbc_deploy::DdsMotionReference>(
-      std::move(default_q), dds_cfg, step_dt);
+      std::move(default_q), dds_cfg, step_dt_);
     spdlog::info(
       "WBC reference_source=dds (domain {} topic '{}') — "
       "clip/Gen UX owned by wbc_reference_node",
@@ -83,7 +98,7 @@ State_WbcTracking::State_WbcTracking(int state_mode, std::string state_string)
     }
 
     clip_library_ = std::make_unique<MotionClipLibrary>(
-      clips_dir, manifest, step_dt, anchor_body, pose_clips);
+      clips_dir, manifest, step_dt_, anchor_body_, pose_clips);
     motion = clip_library_->loader();
 
     const std::string clip_next_expr =
@@ -91,11 +106,11 @@ State_WbcTracking::State_WbcTracking(int state_mode, std::string state_string)
     const std::string clip_prev_expr =
       cfg["clip_prev"].as<std::string>("RT + left.on_pressed");
     const std::string clip_play_expr =
-      cfg["clip_play"].as<std::string>("A.on_pressed");
+      cfg["clip_play"].as<std::string>("!RT + A.on_pressed");
     const std::string clip_getup_expr =
-      cfg["clip_getup"].as<std::string>("up.on_pressed");
+      cfg["clip_getup"].as<std::string>("RT + up.on_pressed");
     const std::string clip_liedown_expr =
-      cfg["clip_liedown"].as<std::string>("down.on_pressed");
+      cfg["clip_liedown"].as<std::string>("RT + down.on_pressed");
     clip_next_fn_ = compileJoystickExpr(clip_next_expr);
     clip_prev_fn_ = compileJoystickExpr(clip_prev_expr);
     clip_play_fn_ = compileJoystickExpr(clip_play_expr);
@@ -166,6 +181,97 @@ void State_WbcTracking::enterClipSelectMode(float frozen_time)
     clip_library_->selectedBrowsableName());
 }
 
+bool State_WbcTracking::seedDdsGetupFrameZeroHold()
+{
+  auto dds = std::dynamic_pointer_cast<wbc_deploy::DdsMotionReference>(motion);
+  if (!dds) {
+    return false;
+  }
+
+  const auto& root = param::config;
+  const auto cfg = param::config["FSM"][getStateString()];
+  std::string clip_name = "getup_01";
+  if (root["reference_node"] && root["reference_node"]["pose_clips"] &&
+      root["reference_node"]["pose_clips"]["getup"]) {
+    clip_name = root["reference_node"]["pose_clips"]["getup"].as<std::string>();
+  } else if (cfg["pose_clips"] && cfg["pose_clips"]["getup"]) {
+    clip_name = cfg["pose_clips"]["getup"].as<std::string>();
+  }
+
+  std::filesystem::path clips_dir = param::config_string(
+    cfg, "clips_dir", param::config_string(root, "clips_dir", "config/clips"));
+  clips_dir = param::resolve_path_under_proj(clips_dir);
+  const auto clip_path = resolve_clip_path(clips_dir, clip_name);
+
+  try {
+    WbcMotionLoader loader(clip_path.string(), anchor_body_, step_dt_);
+    loader.update(0.0f);
+    dds_floor_hold_arc_ = wbc_deploy::pack_arc_reference(loader);
+    dds->applyArcCommand(
+      dds_floor_hold_arc_.data(),
+      static_cast<int>(dds_floor_hold_arc_.size()),
+      nullptr,
+      0,
+      0,
+      "clips",
+      0,
+      clip_name,
+      /*update_episode=*/false);
+    dds->set_hold_arc(true);
+    dds_floor_hold_active_ = true;
+    spdlog::info(
+      "WBC seeded getup frame 0 hold from '{}' (overrides DDS until getup plays)",
+      clip_name);
+    return true;
+  } catch (const std::exception& exc) {
+    spdlog::error("Failed to seed getup frame 0 hold: {}", exc.what());
+    dds_floor_hold_active_ = false;
+    dds_floor_hold_arc_.clear();
+    return false;
+  }
+}
+
+void State_WbcTracking::reapplyDdsFloorHoldIfNeeded()
+{
+  if (!dds_floor_hold_active_ || dds_floor_hold_arc_.empty()) {
+    return;
+  }
+  auto dds = std::dynamic_pointer_cast<wbc_deploy::DdsMotionReference>(motion);
+  if (!dds) {
+    dds_floor_hold_active_ = false;
+    return;
+  }
+  // Only release when the ref node starts a getup episode — ignore idle/stand
+  // episode bumps (e.g. accidental A play must not clear the floor hold).
+  if (dds->consume_restart()) {
+    const std::string clip = dds->clip_name();
+    const bool is_getup =
+      clip.find("getup") != std::string::npos || clip == "getup";
+    if (is_getup) {
+      dds->set_hold_arc(false);
+      dds_floor_hold_active_ = false;
+      env->reset();
+      spdlog::info(
+        "WBC floor hold released — tracking ref getup ('{}')", clip);
+    } else {
+      dds->set_hold_arc(true);
+      dds->applyArcCommand(
+        dds_floor_hold_arc_.data(),
+        static_cast<int>(dds_floor_hold_arc_.size()),
+        nullptr,
+        0,
+        0,
+        "clips",
+        0,
+        "getup_hold",
+        /*update_episode=*/false);
+      spdlog::info(
+        "WBC keeping getup frame 0 hold (ignored ref episode '{}')", clip);
+    }
+    return;
+  }
+}
+
 float State_WbcTracking::currentPlaybackTime() const
 {
   if (clip_playback_active_) {
@@ -198,17 +304,39 @@ void State_WbcTracking::handleClipSwitch()
     const auto kind = clip_library_->currentKind();
     if (kind == MotionClipLibrary::ClipKind::PoseGetup) {
       robot_is_up_ = true;
-      enterClipSelectMode(time_range_[1]);
+      // Trajectory mode starts from default idle stand hold, then browse/play.
+      if (!clip_library_->selectDefaultBrowsable()) {
+        spdlog::error("Failed to load default idle after getup");
+      } else {
+        motion = clip_library_->loader();
+        syncPlaybackEndToMotion();
+      }
+      enterClipSelectMode(0.0f);
       return;
     }
     if (kind == MotionClipLibrary::ClipKind::PoseLiedown) {
+      // Same as floor entry: hold getup frame 0 until getup is played.
       robot_is_up_ = false;
-      pauseClipPlayback(time_range_[1]);
-      spdlog::info("Liedown finished — robot is down");
+      if (!clip_library_->selectPoseClip("getup")) {
+        spdlog::error("Failed to load getup after liedown");
+        pauseClipPlayback(time_range_[1]);
+      } else {
+        motion = clip_library_->loader();
+        syncPlaybackEndToMotion();
+        pauseClipPlayback(0.0f);
+      }
+      spdlog::info("Liedown finished — holding getup frame 0 (only getup allowed)");
       return;
     }
     if (kind == MotionClipLibrary::ClipKind::Browsable) {
-      enterClipSelectMode(time_range_[1]);
+      // Return to default idle stand hold before the next trajectory choice.
+      if (!clip_library_->selectDefaultBrowsable()) {
+        spdlog::error("Failed to load default idle after clip");
+      } else {
+        motion = clip_library_->loader();
+        syncPlaybackEndToMotion();
+      }
+      enterClipSelectMode(0.0f);
       return;
     }
   }
@@ -219,6 +347,7 @@ void State_WbcTracking::handleClipSwitch()
         applyMotionLoader(true);
       }
     }
+    // While down: getup only — no browse / play / liedown.
     return;
   }
 
@@ -257,26 +386,40 @@ void State_WbcTracking::enter()
   }
 
   if (reference_source_ == "dds") {
-    // Policy tracks whatever wbc_reference_node publishes (standing hold until
-    // a clip/Gen episode starts). Floor getup is also owned by the ref node.
+    // Policy tracks wbc_reference_node Arc. From FloorReady we locally seed
+    // getup frame 0 so enable does not briefly track the standing DDS default.
     robot_is_up_ = true;
     awaiting_clip_select_ = false;
     clip_playback_active_ = true;
     frozen_playback_time_ = 0.0f;
     playback_finished_ = false;
     was_playback_finished_ = false;
+    dds_floor_hold_active_ = false;
+    dds_floor_hold_arc_.clear();
+    if (auto dds = std::dynamic_pointer_cast<wbc_deploy::DdsMotionReference>(motion)) {
+      dds->set_hold_arc(false);
+    }
     if (wbc_deploy::pendingWbcEntryMode() == wbc_deploy::WbcEntryMode::FromFloor) {
-      spdlog::info(
-        "WBC tracking (dds) from floor — press getup on wbc_reference_node "
-        "(D-pad up) once the ref node is streaming");
+      robot_is_up_ = false;
+      if (seedDdsGetupFrameZeroHold()) {
+        spdlog::info(
+          "WBC tracking (dds) from floor — holding getup frame 0; "
+          "RT+up on wbc_reference_node to play getup");
+      } else {
+        spdlog::warn(
+          "WBC tracking (dds) from floor — getup seed failed; "
+          "ensure ref node floor hold (LT+down) is publishing");
+      }
       wbc_deploy::pendingWbcEntryMode() = wbc_deploy::WbcEntryMode::Standing;
     } else {
       spdlog::info(
-        "WBC tracking (dds) — waiting for wbc_reference_node Arc on domain 101");
+        "WBC tracking (dds) from stand — tracking ref stand hold "
+        "(first idle frame 0)");
     }
   } else {
     motion = clip_library_->loader();
     if (wbc_deploy::pendingWbcEntryMode() == wbc_deploy::WbcEntryMode::FromFloor) {
+      // Hold lying pose (getup frame 0); user presses getup to play.
       if (!clip_library_->selectPoseClip("getup")) {
         spdlog::error("Failed to load getup pose clip on WBC entry");
       } else {
@@ -284,15 +427,17 @@ void State_WbcTracking::enter()
       }
       robot_is_up_ = false;
       awaiting_clip_select_ = false;
-      clip_playback_active_ = true;
+      pauseClipPlayback(0.0f);
       wbc_deploy::pendingWbcEntryMode() = wbc_deploy::WbcEntryMode::Standing;
-      spdlog::info("WBC tracking started from floor — playing getup");
+      spdlog::info(
+        "WBC tracking from floor — holding getup frame 0 (press up to getup)");
     } else {
+      // Hold first idle (default browsable) frame 0 in clip-select.
       robot_is_up_ = true;
       enterClipSelectMode(0.0f);
       spdlog::info(
-        "WBC tracking ready — selected clip: {}",
-        clip_library_->selectedBrowsableName());
+        "WBC tracking from stand — holding {} frame 0",
+        clip_library_->currentName());
     }
   }
 
@@ -321,7 +466,9 @@ void State_WbcTracking::enter()
     while (policy_thread_running) {
       {
         std::lock_guard<std::mutex> lock(tracking_mtx_);
-        if (motion && motion->consume_restart()) {
+        if (dds_floor_hold_active_) {
+          reapplyDdsFloorHoldIfNeeded();
+        } else if (motion && motion->consume_restart()) {
           env->reset();
           spdlog::info("WBC policy reset — new reference episode");
         }

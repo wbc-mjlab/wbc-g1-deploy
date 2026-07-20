@@ -123,6 +123,7 @@ inline po::variables_map helper(int argc, char** argv)
         ("help,h", "produce help message")
         ("version,v", "show version")
         ("log", "record log file")
+        ("verbose", "debug logs (step status, PD torque clip, joy edges)")
         ("network,n", po::value<std::string>()->default_value(""), "dds network interface")
         ;
 
@@ -141,11 +142,10 @@ inline po::variables_map helper(int argc, char** argv)
         exit(0);
     }
 
-#ifndef NDEBUG
-    spdlog::set_level(spdlog::level::debug);
-#else
-    spdlog::set_level(spdlog::level::info);
-#endif
+    // Default: info — mode / clip transitions stay visible; heartbeat & PD clip
+    // diagnostics require --verbose (debug).
+    spdlog::set_level(
+      vm.count("verbose") ? spdlog::level::debug : spdlog::level::info);
     if(vm.count("log"))
     {
         std::filesystem::create_directories(proj_dir / "log");

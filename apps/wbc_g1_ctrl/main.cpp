@@ -43,9 +43,9 @@ int main(int argc, char** argv)
     auto fsm = std::make_unique<CtrlFSM>(param::config["FSM"]);
     fsm->start();
 
-    std::cout << "Standing start: [L2 + D-pad Up] FixStand, then [R2 + A] WBC tracking.\n";
-    std::cout << "Floor start: [L2 + D-pad Down] floor pose, then [R2 + Y] getup + WBC.\n";
-    std::cout << "In WBC: [RT + D-pad L/R] select clip, [A] play, [D-pad down/up] liedown/getup.\n";
+    std::cout << "Standing: [L2 + D-pad Up] FixStand → [R2 + A] WBC (idle frame 0).\n";
+    std::cout << "Floor: [L2 + D-pad Down] FloorReady → [R2 + A] WBC (getup frame 0).\n";
+    std::cout << "Same enable from both; clip/Gen UX is on wbc_reference_node.\n";
     std::cout << "Press [L2 + B] for Passive.\n";
 
     while (true) {

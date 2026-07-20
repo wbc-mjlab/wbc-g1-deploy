@@ -19,7 +19,10 @@ Examples:
 
 Starts and attaches to a tmux session with:
   pane 0: build/wbc_g1_ctrl --network=<iface>
-  pane 1: build/wbc_reference_node --mode gen --network=<iface>
+  pane 1: build/wbc_reference_node --network=<iface>
+          (clips / Standing by default — use LT+up/down prep, then RT+A)
+
+To start the ref node directly in Gen, pass: -- --mode gen
 
 By default, --keep-open returns each pane to a shell after Ctrl+C/process exit.
 EOF
@@ -112,7 +115,9 @@ if tmux has-session -t "$session" 2>/dev/null; then
 fi
 
 ctrl_cmd=( "$ctrl_bin" "--network=$network" )
-ref_cmd=( "$ref_bin" --mode gen "--network=$network" "${extra_ref_args[@]}" )
+# Default: clips / Standing so LT+up/down prep + getup gate work. Pass
+# `-- --mode gen` after the script args to boot straight into Generator.
+ref_cmd=( "$ref_bin" "--network=$network" "${extra_ref_args[@]}" )
 shell_cmd=( "${SHELL:-/bin/bash}" -l )
 printf -v ctrl_cmd_q '%q ' "${ctrl_cmd[@]}"
 printf -v ref_cmd_q '%q ' "${ref_cmd[@]}"

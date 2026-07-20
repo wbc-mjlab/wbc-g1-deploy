@@ -47,7 +47,9 @@ public:
   bool browseNextSelected();
   bool browsePrevSelected();
   bool activateSelectedBrowsable();
-  bool selectBrowsableByName(const std::string& name);
+  bool selectBrowsableByName(const std::string& name, bool make_default = false);
+  /// Load manifest default (first idle) and select it for browsing.
+  bool selectDefaultBrowsable();
   bool selectPoseClip(const std::string& key);
 
   void resetPlayback(const isaaclab::ArticulationData& data, float time_start);
@@ -61,6 +63,7 @@ private:
   int current_index_ = 0;
   int selected_browsable_index_ = 0;
   int last_browsable_index_ = 0;
+  int default_browsable_index_ = 0;
   ClipKind current_kind_ = ClipKind::Browsable;
   std::string current_pose_key_;
   float step_dt_ = 0.02f;

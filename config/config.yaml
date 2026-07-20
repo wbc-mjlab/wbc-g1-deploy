@@ -20,22 +20,28 @@ reference_node:
   # clip: walk_01
   loop: false          # after browsable clip ends → select
   hz: 50
-  autoplay: false      # start in clip select (hold frozen frame)
-  initial_up: true     # false after FloorReady: require getup before Gen
+  autoplay: false      # start in pose hold (not auto-playing a clip)
+  initial_up: true     # true=stand hold (first idle); false=floor hold (getup frame 0)
+  # stand_prep / floor_prep mirror Passive → FixStand / FloorReady (LT+up / LT+down)
+  # so the Arc matches before the single policy enable (ctrl RT+A).
   gen_dir: config/policy/gen/kin
   pose_clips:
     getup: getup_01
     liedown: liedown_01
+  # stand_prep: LT + up.on_pressed
+  # floor_prep: LT + down.on_pressed
   # clip_next: RT + right.on_pressed
   # clip_prev: RT + left.on_pressed
-  # clip_play: A.on_pressed
-  # clip_getup: up.on_pressed
-  # clip_liedown: down.on_pressed
+  # Play without RT — RT+A is ctrl policy enable only (does not start clips/getup).
+  clip_play: "!RT + A.on_pressed"
+  # While Down (after LT+down / liedown): only this starts getup.
+  clip_getup: RT + up.on_pressed
+  clip_liedown: RT + down.on_pressed
   mode_gen: RT + Y.on_pressed      # enter Gen locomotion
   mode_clips: RT + X.on_pressed    # return to clip select
-  # Gen-only height teleop (plain D-pad; Y without RT so RT+Y still enters Gen)
-  height_up: up.on_pressed
-  height_down: down.on_pressed
+  # Gen-only height teleop — plain D-pad, without RT (RT+up/down = getup/liedown).
+  height_up: "!RT + up.on_pressed"
+  height_down: "!RT + down.on_pressed"
   height_reset: RB + Y.on_pressed    # idle stand height 0.80 m
   height_step: 0.05                  # meters per D-pad press
   # Gen stick cruise (no RT) × RT boost → clamp to play_vel_ranges
@@ -46,6 +52,8 @@ reference_node:
   cruise_lin_vel_y: [-1.0, 1.0]
   cruise_ang_vel_z: [-3.0, 3.0]
   # infer_log_every: 50            # log Gen ONNX timing every N steps (0=off)
+  # Logging: quiet by default (mode/clip transitions only). Pass --verbose for
+  # step heartbeats / joy edges. Controller: same via wbc_g1_ctrl --verbose.
 
 gen_dir: config/policy/gen/kin
 
@@ -139,9 +147,10 @@ FSM:
       FixStand: LT + up.on_pressed
     clip_next: RT + right.on_pressed
     clip_prev: RT + left.on_pressed
-    clip_play: A.on_pressed
-    clip_getup: up.on_pressed
-    clip_liedown: down.on_pressed
+    # Play must not fire on ctrl enable (RT+A).
+    clip_play: "!RT + A.on_pressed"
+    clip_getup: RT + up.on_pressed
+    clip_liedown: RT + down.on_pressed
     pose_clips:
       getup: getup_01
       liedown: liedown_01

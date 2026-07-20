@@ -79,6 +79,11 @@ public:
   uint64_t episode() const;
   bool consume_restart() override;
 
+  /// When true, DDS samples update episode (for getup start) but do not
+  /// overwrite the locally held Arc (used for FloorReady → getup frame 0).
+  void set_hold_arc(bool hold) { hold_arc_.store(hold); }
+  bool hold_arc() const { return hold_arc_.load(); }
+
   /// Apply a packed Arc sample (unit tests / local inject).
   void applyArcCommand(
     const float* data,
@@ -88,7 +93,8 @@ public:
     uint64_t time_frame = 0,
     const std::string& mode = "stream",
     uint64_t episode = 0,
-    const std::string& clip_name = "");
+    const std::string& clip_name = "",
+    bool update_episode = true);
 
 private:
   void onMessage(const void* msg);
@@ -109,6 +115,7 @@ private:
   bool have_episode_ = false;
   bool restart_pending_ = false;
   std::atomic<bool> has_sample_{false};
+  std::atomic<bool> hold_arc_{false};
 
   std::shared_ptr<unitree::common::DdsParticipant> participant_;
   std::shared_ptr<unitree::common::DdsSubscriber> subscriber_;
