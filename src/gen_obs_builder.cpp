@@ -20,16 +20,23 @@ float default_stand_height(const GenDeployParams& params)
   return kIdle;
 }
 
+std::vector<float> zero_term(int dim, const std::string& name)
+{
+  if (name == "projected_gravity" && dim >= 3) {
+    return {0.0f, 0.0f, -1.0f};
+  }
+  return std::vector<float>(static_cast<size_t>(std::max(dim, 0)), 0.0f);
+}
+
 }  // namespace
 
 GenProprioSample standing_proprio_sample(const GenDeployParams& params)
 {
   GenProprioSample s;
-  s.base_ang_vel.assign(3, 0.0f);
-  s.projected_gravity = {0.0f, 0.0f, -1.0f};
-  s.joint_pos_rel.assign(29, 0.0f);
-  s.joint_vel_rel.assign(29, 0.0f);
-  (void)params;
+  for (const auto& name : params.state_observation_names) {
+    const auto& cfg = params.state_observations.at(name);
+    s.set(name, zero_term(cfg.dim, name));
+  }
   return s;
 }
 
@@ -42,25 +49,6 @@ GenObsBuilder::GenObsBuilder(GenDeployParams params)
   const float h0 = default_stand_height(params_);
   seed_height(h0);
   reset(standing_proprio_sample(params_));
-}
-
-const std::vector<float>& GenObsBuilder::term_values(
-  const GenProprioSample& sample,
-  const std::string& deploy_name) const
-{
-  if (deploy_name == "base_ang_vel") {
-    return sample.base_ang_vel;
-  }
-  if (deploy_name == "projected_gravity") {
-    return sample.projected_gravity;
-  }
-  if (deploy_name == "joint_pos_rel") {
-    return sample.joint_pos_rel;
-  }
-  if (deploy_name == "joint_vel_rel") {
-    return sample.joint_vel_rel;
-  }
-  throw std::runtime_error("Unsupported Gen proprio term: " + deploy_name);
 }
 
 void GenObsBuilder::seed_height(float height)
@@ -79,7 +67,12 @@ void GenObsBuilder::reset(const GenProprioSample& fill)
 {
   for (const auto& name : params_.state_observation_names) {
     const auto& cfg = params_.state_observations.at(name);
-    const auto& vals = term_values(fill, name);
+    const auto* vals_ptr = fill.get(name);
+    if (vals_ptr == nullptr) {
+      throw std::runtime_error(
+        "Proprio sample missing term required by config: " + name);
+    }
+    const auto& vals = *vals_ptr;
     if (static_cast<int>(vals.size()) != cfg.dim) {
       throw std::runtime_error(
         "Proprio term " + name + " dim mismatch: got " +
@@ -99,7 +92,12 @@ void GenObsBuilder::push(const GenProprioSample& sample)
 {
   for (const auto& name : params_.state_observation_names) {
     const auto& cfg = params_.state_observations.at(name);
-    auto vals = term_values(sample, name);
+    const auto* vals_ptr = sample.get(name);
+    if (vals_ptr == nullptr) {
+      throw std::runtime_error(
+        "Proprio sample missing term required by config: " + name);
+    }
+    auto vals = *vals_ptr;
     if (static_cast<int>(vals.size()) != cfg.dim) {
       throw std::runtime_error("Proprio term " + name + " dim mismatch on push");
     }

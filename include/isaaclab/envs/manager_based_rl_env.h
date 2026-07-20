@@ -30,6 +30,7 @@ public:
         robot->data.joint_ids_map = cfg["joint_ids_map"].as<std::vector<float>>();
         robot->data.joint_pos.resize(robot->data.joint_ids_map.size());
         robot->data.joint_vel.resize(robot->data.joint_ids_map.size());
+        robot->data.joint_torque.resize(robot->data.joint_ids_map.size());
 
         { // default joint positions
             auto default_joint_pos = cfg["default_joint_pos"].as<std::vector<float>>();

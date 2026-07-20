@@ -28,6 +28,9 @@ struct ArticulationData
     // Joint velocities of all joints.
     Eigen::VectorXf joint_vel;
 
+    // Estimated joint actuator torques (Unitree ``tau_est``), policy joint order.
+    Eigen::VectorXf joint_torque;
+
     // Root angular velocity in base frame.
     Eigen::Vector3f root_ang_vel_b;
 

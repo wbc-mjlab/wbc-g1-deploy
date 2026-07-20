@@ -22,7 +22,7 @@ reference_node:
   hz: 50
   autoplay: false      # start in clip select (hold frozen frame)
   initial_up: true     # false after FloorReady: require getup before Gen
-  gen_dir: config/policy/gen
+  gen_dir: config/policy/gen/kin
   pose_clips:
     getup: getup_01
     liedown: liedown_01
@@ -41,13 +41,13 @@ reference_node:
   # Gen stick cruise (no RT) × RT boost → clamp to play_vel_ranges
   # boost = lerp(vel_boost_min, vel_boost_max, RT); Unitree R2 is mostly digital.
   vel_boost_min: 1.0
-  vel_boost_max: 2.5
-  cruise_lin_vel_x: [-0.7, 2.0]
-  cruise_lin_vel_y: [-0.8, 0.8]
-  cruise_ang_vel_z: [-2.0, 2.0]
+  vel_boost_max: 3.0
+  cruise_lin_vel_x: [-1.0, 1.5]
+  cruise_lin_vel_y: [-1.0, 1.0]
+  cruise_ang_vel_z: [-3.0, 3.0]
   # infer_log_every: 50            # log Gen ONNX timing every N steps (0=off)
 
-gen_dir: config/policy/gen
+gen_dir: config/policy/gen/kin
 
 FSM:
   _:

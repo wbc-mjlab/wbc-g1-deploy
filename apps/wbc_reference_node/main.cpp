@@ -86,26 +86,37 @@ wbc_deploy::GenProprioSample proprio_from_articulation(
   const isaaclab::ArticulationData& data)
 {
   wbc_deploy::GenProprioSample s;
-  s.base_ang_vel = {
-    data.root_ang_vel_b.x(),
-    data.root_ang_vel_b.y(),
-    data.root_ang_vel_b.z(),
-  };
-  s.projected_gravity = {
-    data.projected_gravity_b.x(),
-    data.projected_gravity_b.y(),
-    data.projected_gravity_b.z(),
-  };
+  s.set(
+    "base_ang_vel",
+    {
+      data.root_ang_vel_b.x(),
+      data.root_ang_vel_b.y(),
+      data.root_ang_vel_b.z(),
+    });
+  s.set(
+    "projected_gravity",
+    {
+      data.projected_gravity_b.x(),
+      data.projected_gravity_b.y(),
+      data.projected_gravity_b.z(),
+    });
   const int n = static_cast<int>(data.joint_pos.size());
-  s.joint_pos_rel.resize(static_cast<size_t>(n));
-  s.joint_vel_rel.resize(static_cast<size_t>(n));
+  std::vector<float> joint_pos_rel(static_cast<size_t>(n));
+  std::vector<float> joint_vel_rel(static_cast<size_t>(n));
+  std::vector<float> joint_torque(static_cast<size_t>(n), 0.0f);
   for (int i = 0; i < n; ++i) {
     const float q0 =
       (i < data.default_joint_pos.size()) ? data.default_joint_pos[i] : 0.0f;
-    s.joint_pos_rel[static_cast<size_t>(i)] = data.joint_pos[i] - q0;
-    s.joint_vel_rel[static_cast<size_t>(i)] =
+    joint_pos_rel[static_cast<size_t>(i)] = data.joint_pos[i] - q0;
+    joint_vel_rel[static_cast<size_t>(i)] =
       (i < data.joint_vel.size()) ? data.joint_vel[i] : 0.0f;
+    if (i < data.joint_torque.size()) {
+      joint_torque[static_cast<size_t>(i)] = data.joint_torque[i];
+    }
   }
+  s.set("joint_pos_rel", std::move(joint_pos_rel));
+  s.set("joint_vel_rel", std::move(joint_vel_rel));
+  s.set("joint_torque", std::move(joint_torque));
   return s;
 }
 
@@ -304,6 +315,7 @@ int main(int argc, char** argv)
     }
     robot->data.joint_pos = robot->data.default_joint_pos;
     robot->data.joint_vel = Eigen::VectorXf::Zero(robot->data.joint_pos.size());
+    robot->data.joint_torque = Eigen::VectorXf::Zero(robot->data.joint_pos.size());
     spdlog::info("Connected to robot lowstate (joystick ready)");
   } else {
     spdlog::info(
