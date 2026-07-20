@@ -30,6 +30,8 @@ reference_node:
     liedown: liedown_01
   # stand_prep: LT + up.on_pressed
   # floor_prep: LT + down.on_pressed
+  # floor_prep_hold: LT + down   # level (edge can miss vs ctrl on separate process)
+
   # clip_next: RT + right.on_pressed
   # clip_prev: RT + left.on_pressed
   # Play without RT — RT+A is ctrl policy enable only (does not start clips/getup).
@@ -47,7 +49,7 @@ reference_node:
   # Gen stick cruise (no RT) × RT boost → clamp to play_vel_ranges
   # boost = lerp(vel_boost_min, vel_boost_max, RT); Unitree R2 is mostly digital.
   vel_boost_min: 1.0
-  vel_boost_max: 5.0
+  vel_boost_max: 3.0
   cruise_lin_vel_x: [-1.0, 1.5]
   cruise_lin_vel_y: [-1.0, 1.0]
   cruise_ang_vel_z: [-3.0, 3.0]

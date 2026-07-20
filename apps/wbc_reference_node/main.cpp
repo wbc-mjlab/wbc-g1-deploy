@@ -267,10 +267,15 @@ int main(int argc, char** argv)
     ref_cfg,
     "stand_prep",
     "LT + up.on_pressed");
+  // Edge + level: 50 Hz loop can miss on_pressed while ctrl FSM still catches it.
   const std::string expr_floor_prep = yaml_str(
     ref_cfg,
     "floor_prep",
     "LT + down.on_pressed");
+  const std::string expr_floor_prep_hold = yaml_str(
+    ref_cfg,
+    "floor_prep_hold",
+    "LT + down");
   // Joystick exprs — match ctrl; mode switch configurable on reference_node.
   const std::string expr_next =
     yaml_str(ref_cfg, "clip_next", yaml_str(track_cfg, "clip_next", "RT + right.on_pressed"));
@@ -309,6 +314,7 @@ int main(int argc, char** argv)
   auto height_reset_fn = compileJoystickExpr(expr_height_reset);
   auto stand_prep_fn = compileJoystickExpr(expr_stand_prep);
   auto floor_prep_fn = compileJoystickExpr(expr_floor_prep);
+  auto floor_prep_hold_fn = compileJoystickExpr(expr_floor_prep_hold);
 
   // --- Unitree lowstate FIRST (joystick + Gen proprio), then DDS pub ---
   // Creating the domain-101 publisher must not run before ChannelFactory::Init,
@@ -672,6 +678,12 @@ int main(int argc, char** argv)
       }
       do_stand_prep = stand_prep_fn && stand_prep_fn(joy);
       do_floor_prep = floor_prep_fn && floor_prep_fn(joy);
+      // Level hold: arm Down if edge was missed (ctrl already in FloorReady).
+      if (!do_floor_prep && floor_prep_hold_fn && floor_prep_hold_fn(joy) &&
+          !(ui.is_down() && !ui.playing &&
+            library.currentKind() == MotionClipLibrary::ClipKind::PoseGetup)) {
+        do_floor_prep = true;
+      }
       // Cruise stick × RT boost (1 → vel_boost_max), then clamp to play ranges.
       const float boost =
         rt_vel_boost(joy.RT(), vel_boost_min, vel_boost_max);
@@ -773,7 +785,11 @@ int main(int argc, char** argv)
         enter_stand_hold("LT+up");
       }
     } else if (do_floor_prep) {
-      enter_floor_hold("LT+down");
+      // Skip re-enter while already holding getup f0 (level LT+down stay-down).
+      if (!(ui.is_down() && !ui.playing &&
+            library.currentKind() == MotionClipLibrary::ClipKind::PoseGetup)) {
+        enter_floor_hold("LT+down");
+      }
     } else if (do_getup && mode == ActiveMode::Gen) {
       // Started in Gen or still Gen while ctrl is on FloorReady: RT+up = getup.
       spdlog::info("Hit: RT+up — leave Gen, play getup");
@@ -818,7 +834,17 @@ int main(int argc, char** argv)
             "(RT+A = policy enable only)");
         }
       } else {
-        if (do_mode_gen) {
+        // Standing: RT+up still starts getup if floor_prep was missed on the
+        // ref node while ctrl already did FloorReady (robot is on the floor).
+        if (do_getup && !ui.playing) {
+          spdlog::info(
+            "Hit: RT+up — play getup (ref was Standing; use LT+down next time "
+            "so Down arms with FloorReady)");
+          if (library.selectPoseClip("getup")) {
+            ui.body = ClipUiState::BodyState::Down;
+            start_clip_playback();
+          }
+        } else if (do_mode_gen) {
           enter_gen(sc == 7 ? "stdin G" : "RT+Y");
         } else if (
           do_liedown && (ui.awaiting_select || ui.playback_finished) &&
