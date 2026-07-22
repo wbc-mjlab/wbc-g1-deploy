@@ -97,8 +97,10 @@ GenDeployParams load_gen_deploy_params(const std::filesystem::path& params_dir)
   p.command.xy_features_per_horizon = cmd["xy_features_per_horizon"].as<int>(2);
   p.command.height_features_per_horizon =
     cmd["height_features_per_horizon"].as<int>(0);
+  p.command.height_setpoint_dim = cmd["height_setpoint_dim"].as<int>(0);
   p.command.angle_features_per_horizon = cmd["angle_features_per_horizon"].as<int>(2);
   p.command.height_lowpass_tau = cmd["height_lowpass_tau"].as<float>(0.10f);
+  p.command.height_scale = cmd["height_scale"].as<float>(1.0f);
 
   const auto dims = doc["dims"];
   p.input_dim = dims["input_dim"].as<int>();
@@ -132,10 +134,11 @@ GenDeployParams load_gen_deploy_params(const std::filesystem::path& params_dir)
       "Gen params state flat widths sum " + std::to_string(sum_state) +
       " != state_dim " + std::to_string(p.state_dim));
   }
+  const int k = static_cast<int>(p.command.horizons.size());
   const int cmd_dim =
-    static_cast<int>(p.command.horizons.size()) *
-    (p.command.xy_features_per_horizon + p.command.height_features_per_horizon +
-     p.command.angle_features_per_horizon);
+    k * (p.command.xy_features_per_horizon + p.command.angle_features_per_horizon) +
+    k * p.command.height_features_per_horizon +
+    p.command.height_setpoint_dim;
   if (cmd_dim != p.command_dim) {
     throw std::runtime_error(
       "Gen params command packing dim " + std::to_string(cmd_dim) +

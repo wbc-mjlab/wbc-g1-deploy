@@ -24,8 +24,12 @@ struct GenCommandCfg {
   float position_scale = 1.0f;
   int xy_features_per_horizon = 2;
   int height_features_per_horizon = 1;
+  /// Single absolute height setpoint (wbc_ref); 0 = per-horizon heights.
+  int height_setpoint_dim = 0;
   int angle_features_per_horizon = 2;
   float height_lowpass_tau = 0.10f;
+  /// Divide absolute height by this (match training ``height_scale``).
+  float height_scale = 1.0f;
 };
 
 struct GenModelCfg {

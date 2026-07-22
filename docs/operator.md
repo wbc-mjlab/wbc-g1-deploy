@@ -49,7 +49,7 @@ Same for both start paths once you are **Standing** with WBC enabled:
 | Step | Press | Result |
 |------|-------|--------|
 | 1 | `RT + Y` | Enter **Generator** |
-| 2 | Sticks; hold `RT` to boost | Walk / run / turn |
+| 2 | Sticks; hold `RT` = sprint / `RB` = crouch | Walk / sprint / crouch |
 
 ### Gen controls
 
@@ -58,9 +58,8 @@ Same for both start paths once you are **Standing** with WBC enabled:
 | Forward / back (`vx`) | Left stick **Y** |
 | Strafe (`vy`) | Left stick **X** |
 | Yaw (`wz`) | Right stick **X** |
-| Boost lin + ang vel | Hold **RT** |
-| Height up / down | D-pad up / down (**without** RT) |
-| Height reset (~0.80 m) | `RB + Y` |
+| Sprint (`sprint_height`, cruise × `sprint_vel_mult`) | Hold **RT** |
+| Crouch (`crouch_height`, cruise × `crouch_vel_mult`) | Hold **RB** (R1) |
 
 ## Back to clips mode
 

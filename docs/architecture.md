@@ -45,16 +45,15 @@ While idle in clip-select, the node keeps publishing the frozen frame (episode u
 |-------|--------|
 | `RT + left/right` | Browse clips |
 | `A` | Play selected clip |
-| `sticks` | **Gen:** cruise velocity (default vx ∈ `[-0.7, 1]`) |
-| `RT` (hold) | **Gen:** multiply vx/vy/ωz by `lerp(1, 2.5, RT)`, clamp to `play_vel_ranges` |
+| `sticks` | **Gen:** cruise velocity |
+| `RT` (hold) | **Gen sprint:** height → `sprint_height`; cruise × `sprint_vel_mult` |
+| `RB` (hold) | **Gen crouch:** height → `crouch_height`; cruise × `crouch_vel_mult` (overrides sprint) |
 | `RT + up` | **Down:** play getup |
 | `RT + down` | **Standing:** play liedown |
-| `up` / `down` (no RT) | **Gen only:** raise / lower height |
-| `RB + Y` | **Gen:** reset height to idle stand (**0.80 m**) |
 | `RT + Y` | Enter **Gen** |
 | `RT + X` | Return to **clip select** |
 
-Cruise / boost: `reference_node.cruise_lin_vel_*`, `vel_boost_min` / `vel_boost_max`. Height: `play_vel_ranges.height` + `height_step`. Unitree wireless R2 is mostly digital, so RT boost is often near on/off.
+Walk / sprint / crouch each set torso height + `*_vel_mult` on shared cruise limits (crouch > sprint > walk).
 
 Ctrl FSM (motors only): FixStand / FloorReady / Passive / enter Wbc_Tracking.
 Policy enable is always **RT+A** from FixStand or FloorReady.

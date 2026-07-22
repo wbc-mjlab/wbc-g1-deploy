@@ -2,14 +2,15 @@
 ///
 /// Clip UX matches ``State_WbcTracking`` (RT+D-pad / A / getup / liedown).
 /// Switch to Gen with ``mode_gen`` (default ``RT + Y``); back with ``mode_clips``
-/// (default ``RT + X``). In Gen, D-pad up/down steps height; RB+Y resets to idle
-/// (0.80 m). Getup/liedown only from clips mode.
+/// (default ``RT + X``). In Gen, hold RB (R1) for crouch or RT for sprint — both
+/// scale the same cruise stick range via ``*_vel_mult``. Getup/liedown only from
+/// clips mode.
 ///
 /// Examples::
 ///
 ///   ./wbc_reference_node -n eth0
 ///   ./wbc_reference_node --mode gen -n eth0
-///   ./wbc_reference_node --dry-run --vx 0.5   # stdin: G/c n/p/Enter u/d/+/-/H
+///   ./wbc_reference_node --dry-run --vx 0.5   # stdin: G/c n/p/Enter u/d z=crouch
 
 #include "GenReferenceEngine.h"
 #include "MotionClipLibrary.h"
@@ -67,11 +68,29 @@ float stick_to_cruise(float stick, float lo, float hi)
   return stick * (-lo);  // lo typically negative
 }
 
-/// RT ∈ [0, 1] → velocity boost ∈ [boost_min, boost_max].
-float rt_vel_boost(float rt01, float boost_min, float boost_max)
+/// Single Gen cruise scale: crouch > sprint > walk (constants from YAML).
+float gen_vel_mult(bool crouch, bool sprint, float crouch_m, float sprint_m, float walk_m)
 {
-  const float t = clampf(rt01, 0.0f, 1.0f);
-  return boost_min + t * (boost_max - boost_min);
+  if (crouch) {
+    return crouch_m;
+  }
+  if (sprint) {
+    return sprint_m;
+  }
+  return walk_m;
+}
+
+/// Desired torso height: crouch > sprint > stand.
+float gen_height_cmd_for(
+  bool crouch, bool sprint, float crouch_h, float sprint_h, float stand_h)
+{
+  if (crouch) {
+    return crouch_h;
+  }
+  if (sprint) {
+    return sprint_h;
+  }
+  return stand_h;
 }
 
 std::string yaml_str(const YAML::Node& node, const char* key, const std::string& def)
@@ -186,9 +205,9 @@ int main(int argc, char** argv)
       << "  RT+X             return to idle stand hold from Gen\n"
       << "Gen mode:\n"
       << "  L-stick Y/X   vx forward/back, vy strafe\n"
-      << "  R-stick X     wz yaw; hold RT to boost lin+ang vel\n"
-      << "  Gen height:      D-pad up/down without RT (only while Gen active)\n"
-      << "  RB+Y           reset height to idle default\n"
+      << "  R-stick X     wz yaw\n"
+      << "  Hold RT       sprint: height→sprint_height, cruise × sprint_vel_mult\n"
+      << "  Hold RB (R1)  crouch: height→crouch_height, cruise × crouch_vel_mult\n"
       << "Getup/liedown always force clips mode (from clips; use RT+X then up/down).\n"
       << "Logging: quiet by default (mode/clip changes only); --verbose for step status.\n";
     return 0;
@@ -292,15 +311,26 @@ int main(int argc, char** argv)
     yaml_str(ref_cfg, "mode_gen", "RT + Y.on_pressed");
   const std::string expr_mode_clips =
     yaml_str(ref_cfg, "mode_clips", "RT + X.on_pressed");
-  // Gen-only height: require !RT so RT+up / RT+down stay getup / liedown.
-  const std::string expr_height_up =
-    yaml_str(ref_cfg, "height_up", "!RT + up.on_pressed");
-  const std::string expr_height_down =
-    yaml_str(ref_cfg, "height_down", "!RT + down.on_pressed");
-  const std::string expr_height_reset =
-    yaml_str(ref_cfg, "height_reset", "RB + Y.on_pressed");
-  const float height_step =
-    ref_cfg["height_step"] ? ref_cfg["height_step"].as<float>() : 0.05f;
+  // Gen gait: cruise × vel_mult + dedicated torso height (crouch > sprint > stand).
+  const std::string expr_crouch = yaml_str(ref_cfg, "crouch", "RB");
+  const std::string expr_sprint = yaml_str(ref_cfg, "sprint", "RT");
+  const float stand_height_cfg =
+    ref_cfg["stand_height"] ? ref_cfg["stand_height"].as<float>() : 0.81f;
+  const float sprint_height =
+    ref_cfg["sprint_height"] ? ref_cfg["sprint_height"].as<float>() : 0.75f;
+  const float crouch_height =
+    ref_cfg["crouch_height"] ? ref_cfg["crouch_height"].as<float>() : 0.62f;
+  const float walk_vel_mult =
+    ref_cfg["walk_vel_mult"] ? ref_cfg["walk_vel_mult"].as<float>() : 1.0f;
+  const float crouch_vel_mult =
+    ref_cfg["crouch_vel_mult"] ? ref_cfg["crouch_vel_mult"].as<float>() : 0.75f;
+  // Prefer sprint_vel_mult; fall back to legacy vel_boost_max.
+  float sprint_vel_mult = 3.1f;
+  if (ref_cfg["sprint_vel_mult"]) {
+    sprint_vel_mult = ref_cfg["sprint_vel_mult"].as<float>();
+  } else if (ref_cfg["vel_boost_max"]) {
+    sprint_vel_mult = ref_cfg["vel_boost_max"].as<float>();
+  }
 
   auto clip_next_fn = compileJoystickExpr(expr_next);
   auto clip_prev_fn = compileJoystickExpr(expr_prev);
@@ -309,9 +339,8 @@ int main(int argc, char** argv)
   auto clip_liedown_fn = compileJoystickExpr(expr_liedown);
   auto mode_gen_fn = compileJoystickExpr(expr_mode_gen);
   auto mode_clips_fn = compileJoystickExpr(expr_mode_clips);
-  auto height_up_fn = compileJoystickExpr(expr_height_up);
-  auto height_down_fn = compileJoystickExpr(expr_height_down);
-  auto height_reset_fn = compileJoystickExpr(expr_height_reset);
+  auto crouch_fn = compileJoystickExpr(expr_crouch);
+  auto sprint_fn = compileJoystickExpr(expr_sprint);
   auto stand_prep_fn = compileJoystickExpr(expr_stand_prep);
   auto floor_prep_fn = compileJoystickExpr(expr_floor_prep);
   auto floor_prep_hold_fn = compileJoystickExpr(expr_floor_prep_hold);
@@ -354,8 +383,8 @@ int main(int argc, char** argv)
     spdlog::info("Connected to robot lowstate (joystick ready)");
   } else {
     spdlog::info(
-      "Dry-run: stdin (n/p/Enter browse/play; u/d getup|height; +/- height; "
-      "H idle height; G=gen C=clips q)");
+      "Dry-run: stdin (n/p/Enter browse/play; u/d getup/liedown; z=crouch toggle; "
+      "G=gen C=clips q)");
   }
 
   const auto dds = wbc_deploy::load_reference_dds_config(root, YAML::Node{});
@@ -377,8 +406,8 @@ int main(int argc, char** argv)
   float play_wz_hi = 3.0f;
   float height_lo = 0.55f;
   float height_hi = 0.95f;
-  // Play idle ``DEFAULT_STAND_HEIGHT``; clamped to gen play_vel_ranges.height.
-  float default_height = 0.80f;
+  // Normal-mode torso height (walk/idle); overridable via stand_height.
+  float default_height = stand_height_cfg;
   if (gen) {
     if (gen->params().play_vel_ranges.count("lin_vel_x")) {
       const auto& r = gen->params().play_vel_ranges.at("lin_vel_x");
@@ -399,14 +428,10 @@ int main(int argc, char** argv)
       const auto& hr = gen->params().play_vel_ranges.at("height");
       height_lo = hr.first;
       height_hi = hr.second;
-      default_height = clampf(0.80f, height_lo, height_hi);
+      default_height = clampf(stand_height_cfg, height_lo, height_hi);
     }
   }
 
-  const float vel_boost_min =
-    ref_cfg["vel_boost_min"] ? ref_cfg["vel_boost_min"].as<float>() : 1.0f;
-  const float vel_boost_max =
-    ref_cfg["vel_boost_max"] ? ref_cfg["vel_boost_max"].as<float>() : 2.5f;
   auto cruise_pair = [&](const char* key, float lo_def, float hi_def) {
     if (ref_cfg[key] && ref_cfg[key].IsSequence() && ref_cfg[key].size() >= 2) {
       return std::make_pair(ref_cfg[key][0].as<float>(), ref_cfg[key][1].as<float>());
@@ -414,19 +439,25 @@ int main(int argc, char** argv)
     return std::make_pair(lo_def, hi_def);
   };
   const auto [cruise_vx_lo, cruise_vx_hi] =
-    cruise_pair("cruise_lin_vel_x", -0.7f, 1.0f);
+    cruise_pair("cruise_lin_vel_x", -1.0f, 1.2f);
   const auto [cruise_vy_lo, cruise_vy_hi] =
-    cruise_pair("cruise_lin_vel_y", -0.4f, 0.4f);
+    cruise_pair("cruise_lin_vel_y", -0.85f, 0.85f);
   const auto [cruise_wz_lo, cruise_wz_hi] =
-    cruise_pair("cruise_ang_vel_z", -1.2f, 1.2f);
+    cruise_pair("cruise_ang_vel_z", -1.5f, 1.5f);
 
   float gen_height_cmd = default_height;
+  const float sprint_height_cmd = clampf(sprint_height, height_lo, height_hi);
+  const float crouch_height_cmd = clampf(crouch_height, height_lo, height_hi);
+  bool crouch_active = false;
+  bool sprint_active = false;
+  bool crouch_was_active = false;
+  bool sprint_was_active = false;
 
   spdlog::info(
     "Bindings: next='{}' prev='{}' play='{}' getup='{}' liedown='{}' "
     "stand_prep='{}' floor_prep='{}' "
-    "mode_gen='{}' mode_clips='{}' height_up='{}' height_down='{}' "
-    "height_reset='{}' (idle h={:.2f} step={:.2f} range=[{:.2f},{:.2f}])",
+    "mode_gen='{}' mode_clips='{}' crouch='{}' sprint='{}' "
+    "(stand h={:.2f} sprint h={:.2f} crouch h={:.2f})",
     expr_next,
     expr_prev,
     expr_play,
@@ -436,28 +467,28 @@ int main(int argc, char** argv)
     expr_floor_prep,
     expr_mode_gen,
     expr_mode_clips,
-    expr_height_up,
-    expr_height_down,
-    expr_height_reset,
+    expr_crouch,
+    expr_sprint,
     default_height,
-    height_step,
-    height_lo,
-    height_hi);
+    sprint_height_cmd,
+    crouch_height_cmd);
   spdlog::info(
     "Gen vel: cruise vx=[{:.2f},{:.2f}] vy=[{:.2f},{:.2f}] wz=[{:.2f},{:.2f}] "
-    "× RT boost [{:.2f},{:.2f}] → clamp play vx=[{:.2f},{:.2f}]",
+    "× walk={:.2f} / sprint={:.2f} / crouch={:.2f} → clamp play vx=[{:.2f},{:.2f}]",
     cruise_vx_lo,
     cruise_vx_hi,
     cruise_vy_lo,
     cruise_vy_hi,
     cruise_wz_lo,
     cruise_wz_hi,
-    vel_boost_min,
-    vel_boost_max,
+    walk_vel_mult,
+    sprint_vel_mult,
+    crouch_vel_mult,
     play_vx_lo,
     play_vx_hi);
 
   std::atomic<int> stdin_cmd{0};  // mirror joystick for dry-run
+  std::atomic<bool> stdin_crouch{false};
   std::thread stdin_thread;
   if (dry_run) {
     stdin_thread = std::thread([&] {
@@ -473,15 +504,11 @@ int main(int argc, char** argv)
         } else if (line == "p" || line == "P") {
           stdin_cmd.store(2);
         } else if (line == "u" || line == "U") {
-          stdin_cmd.store(4);  // getup (clips) / height up (gen)
+          stdin_cmd.store(4);  // getup
         } else if (line == "d" || line == "D") {
-          stdin_cmd.store(5);  // liedown (clips) / height down (gen)
-        } else if (line == "+" || line == "=") {
-          stdin_cmd.store(9);  // height up
-        } else if (line == "-" || line == "_") {
-          stdin_cmd.store(10);  // height down
-        } else if (line == "H") {
-          stdin_cmd.store(11);  // height reset to idle
+          stdin_cmd.store(5);  // liedown
+        } else if (line == "z" || line == "Z") {
+          stdin_crouch.store(!stdin_crouch.load());
         } else if (line == "G") {
           stdin_cmd.store(7);  // gen
         } else if (line == "C" || line == "c") {
@@ -592,6 +619,9 @@ int main(int argc, char** argv)
     ++episode;
     gen->reset();
     gen_height_cmd = default_height;
+    crouch_was_active = false;
+    sprint_was_active = false;
+    stdin_crouch.store(false);
     gen->seed_height(gen_height_cmd);
     if (robot) {
       robot->update();
@@ -609,10 +639,13 @@ int main(int argc, char** argv)
     }
     spdlog::info(
       "Hit: {} — switched to Generator "
-      "(L-stick: Y→vx forward/back, X→vy strafe; R-stick X→wz yaw; "
-      "RT boosts lin+ang vel; D-pad height; RB+Y=idle {:.2f} m; RT+X → clips)",
+      "(L-stick Y→vx X→vy; R-stick X→wz; "
+      "RT=sprint h={:.2f} ×{:.2f}; RB=crouch h={:.2f} ×{:.2f}; RT+X → clips)",
       hit,
-      default_height);
+      sprint_height_cmd,
+      sprint_vel_mult,
+      crouch_height_cmd,
+      crouch_vel_mult);
   };
 
   // Initial reference pose for policy bring-up (no episode bump yet).
@@ -652,14 +685,13 @@ int main(int argc, char** argv)
     bool do_liedown = false;
     bool do_mode_gen = false;
     bool do_mode_clips = false;
-    bool do_height_up = false;
-    bool do_height_down = false;
-    bool do_height_reset = false;
     bool do_stand_prep = false;
     bool do_floor_prep = false;
     float cmd_vx = default_vx;
     float cmd_vy = default_vy;
     float cmd_wz = default_wz;
+    crouch_active = false;
+    sprint_active = false;
 
     if (lowstate) {
       auto& joy = lowstate->joystick;
@@ -670,11 +702,10 @@ int main(int argc, char** argv)
       do_liedown = clip_liedown_fn && clip_liedown_fn(joy);
       do_mode_gen = mode_gen_fn && mode_gen_fn(joy);
       do_mode_clips = mode_clips_fn && mode_clips_fn(joy);
-      // Height teleop only while Generator is active (never in clips / Down).
+      // Gait modifiers only while Generator is active.
       if (mode == ActiveMode::Gen) {
-        do_height_up = height_up_fn && height_up_fn(joy);
-        do_height_down = height_down_fn && height_down_fn(joy);
-        do_height_reset = height_reset_fn && height_reset_fn(joy);
+        crouch_active = crouch_fn && crouch_fn(joy);
+        sprint_active = sprint_fn && sprint_fn(joy);
       }
       do_stand_prep = stand_prep_fn && stand_prep_fn(joy);
       do_floor_prep = floor_prep_fn && floor_prep_fn(joy);
@@ -684,29 +715,30 @@ int main(int argc, char** argv)
             library.currentKind() == MotionClipLibrary::ClipKind::PoseGetup)) {
         do_floor_prep = true;
       }
-      // Cruise stick × RT boost (1 → vel_boost_max), then clamp to play ranges.
-      const float boost =
-        rt_vel_boost(joy.RT(), vel_boost_min, vel_boost_max);
+      // cruise stick × one vel_mult (crouch > sprint > walk).
+      const float vel_mult = gen_vel_mult(
+        crouch_active, sprint_active, crouch_vel_mult, sprint_vel_mult, walk_vel_mult);
       cmd_vx = clampf(
-        stick_to_cruise(joy.ly(), cruise_vx_lo, cruise_vx_hi) * boost,
+        stick_to_cruise(joy.ly(), cruise_vx_lo, cruise_vx_hi) * vel_mult,
         play_vx_lo,
         play_vx_hi);
       cmd_vy = clampf(
-        stick_to_cruise(-joy.lx(), cruise_vy_lo, cruise_vy_hi) * boost,
+        stick_to_cruise(-joy.lx(), cruise_vy_lo, cruise_vy_hi) * vel_mult,
         play_vy_lo,
         play_vy_hi);
       cmd_wz = clampf(
-        stick_to_cruise(-joy.rx(), cruise_wz_lo, cruise_wz_hi) * boost,
+        stick_to_cruise(-joy.rx(), cruise_wz_lo, cruise_wz_hi) * vel_mult,
         play_wz_lo,
         play_wz_hi);
 
       if (do_next || do_prev || do_play || do_getup || do_liedown || do_mode_gen ||
-          do_mode_clips || do_height_up || do_height_down || do_height_reset ||
-          do_stand_prep || do_floor_prep) {
+          do_mode_clips || do_stand_prep || do_floor_prep ||
+          (crouch_active != crouch_was_active) ||
+          (sprint_active != sprint_was_active)) {
         spdlog::debug(
           "joy edge: next={} prev={} play={} getup={} liedown={} gen={} clips={} "
-          "stand={} floor={} h_up={} h_down={} h_reset={} RT={} A={} Y={} X={} "
-          "up={} down={}",
+          "stand={} floor={} crouch={} sprint={} RT={} RB={} A={} Y={} X={} "
+          "up={} down={} vel_mult={:.2f}",
           do_next,
           do_prev,
           do_play,
@@ -716,16 +748,24 @@ int main(int argc, char** argv)
           do_mode_clips,
           do_stand_prep,
           do_floor_prep,
-          do_height_up,
-          do_height_down,
-          do_height_reset,
+          crouch_active,
+          sprint_active,
           joy.RT.pressed,
+          joy.RB.pressed,
           joy.A.pressed,
           joy.Y.pressed,
           joy.X.pressed,
           joy.up.pressed,
-          joy.down.pressed);
+          joy.down.pressed,
+          vel_mult);
       }
+    } else if (dry_run && mode == ActiveMode::Gen) {
+      crouch_active = stdin_crouch.load();
+      const float vel_mult = gen_vel_mult(
+        crouch_active, false, crouch_vel_mult, sprint_vel_mult, walk_vel_mult);
+      cmd_vx = clampf(default_vx * vel_mult, play_vx_lo, play_vx_hi);
+      cmd_vy = clampf(default_vy * vel_mult, play_vy_lo, play_vy_hi);
+      cmd_wz = clampf(default_wz * vel_mult, play_wz_lo, play_wz_hi);
     }
 
     const int sc = stdin_cmd.exchange(0);
@@ -736,34 +776,13 @@ int main(int argc, char** argv)
     } else if (sc == 3) {
       do_play = true;
     } else if (sc == 4) {
-      // Clips Down: getup; Gen: height up.
-      if (mode == ActiveMode::Gen) {
-        do_height_up = true;
-      } else {
-        do_getup = true;
-      }
+      do_getup = true;
     } else if (sc == 5) {
-      if (mode == ActiveMode::Gen) {
-        do_height_down = true;
-      } else {
-        do_liedown = true;
-      }
+      do_liedown = true;
     } else if (sc == 7) {
       do_mode_gen = true;
     } else if (sc == 8) {
       do_mode_clips = true;
-    } else if (sc == 9) {
-      if (mode == ActiveMode::Gen) {
-        do_height_up = true;
-      }
-    } else if (sc == 10) {
-      if (mode == ActiveMode::Gen) {
-        do_height_down = true;
-      }
-    } else if (sc == 11) {
-      if (mode == ActiveMode::Gen) {
-        do_height_reset = true;
-      }
     }
 
     // Prep holds mirror Passive → FixStand / FloorReady so Arc matches robot pose
@@ -860,44 +879,52 @@ int main(int argc, char** argv)
           }
         }
       }
-      // Height is Gen-only; never consume D-pad here.
-    } else {  // Gen — height teleop active only in this branch
+      // Height is Gen-only; crouch handled in Gen branch.
+    } else {  // Gen
       if (do_mode_clips) {
         enter_stand_hold(sc == 8 ? "stdin C" : "RT+X");
-      } else if (do_height_reset) {
-        const float before = gen_height_cmd;
-        gen_height_cmd = default_height;
-        if (gen) {
-          gen->seed_height(gen_height_cmd);
-        }
-        if (before != gen_height_cmd) {
-          spdlog::info(
-            "Gen height RESET {:.3f} → {:.3f} m (idle, seeded)",
-            before,
-            gen_height_cmd);
-        }
-      } else if (do_height_up) {
-        const float before = gen_height_cmd;
-        gen_height_cmd = clampf(gen_height_cmd + height_step, height_lo, height_hi);
-        if (gen) {
-          gen->set_height_cmd(gen_height_cmd);
-        }
-        if (before != gen_height_cmd) {
-          spdlog::info("Gen height ↑ {:.3f} → {:.3f} m", before, gen_height_cmd);
-        }
-      } else if (do_height_down) {
-        const float before = gen_height_cmd;
-        gen_height_cmd = clampf(gen_height_cmd - height_step, height_lo, height_hi);
-        if (gen) {
-          gen->set_height_cmd(gen_height_cmd);
-        }
-        if (before != gen_height_cmd) {
-          spdlog::info("Gen height ↓ {:.3f} → {:.3f} m", before, gen_height_cmd);
-        }
       } else if (do_play) {
         enter_stand_hold(sc == 3 ? "stdin Enter" : "A");
       }
+      gen_height_cmd = gen_height_cmd_for(
+        crouch_active,
+        sprint_active,
+        crouch_height_cmd,
+        sprint_height_cmd,
+        default_height);
+      if (crouch_active != crouch_was_active) {
+        spdlog::info(
+          "Gen crouch {} (h={:.3f} m, vel_mult={:.2f})",
+          crouch_active ? "ON" : "OFF",
+          gen_height_cmd,
+          gen_vel_mult(
+            crouch_active,
+            sprint_active,
+            crouch_vel_mult,
+            sprint_vel_mult,
+            walk_vel_mult));
+        if (gen) {
+          gen->seed_height(gen_height_cmd);
+        }
+      }
+      if (sprint_active != sprint_was_active && !crouch_active) {
+        spdlog::info(
+          "Gen sprint {} (h={:.3f} m, vel_mult={:.2f})",
+          sprint_active ? "ON" : "OFF",
+          gen_height_cmd,
+          gen_vel_mult(
+            false,
+            sprint_active,
+            crouch_vel_mult,
+            sprint_vel_mult,
+            walk_vel_mult));
+        if (gen) {
+          gen->seed_height(gen_height_cmd);
+        }
+      }
     }
+    crouch_was_active = crouch_active;
+    sprint_was_active = sprint_active;
 
     // --- publish ---
     std::vector<float> arc;
@@ -930,15 +957,16 @@ int main(int argc, char** argv)
 
     pub.publish(arc, {}, wire_mode, step, "g1", clip_meta, episode);
     ++step;
-    float last_boost = 1.0f;
-    if (lowstate) {
-      last_boost = rt_vel_boost(lowstate->joystick.RT(), vel_boost_min, vel_boost_max);
+    float last_vel_mult = walk_vel_mult;
+    if (mode == ActiveMode::Gen) {
+      last_vel_mult = gen_vel_mult(
+        crouch_active, sprint_active, crouch_vel_mult, sprint_vel_mult, walk_vel_mult);
     }
     if (step == 1 || step % 100 == 0) {
       const bool joy_to = lowstate && lowstate->isJoystickTimeout();
       spdlog::debug(
         "step={} active={} clip={} playing={} select={} episode={} joy_timeout={} "
-        "vx={:.2f} boost={:.2f} height_cmd={:.3f} ref_h={:.3f}",
+        "vx={:.2f} vel_mult={:.2f} crouch={} sprint={} height_cmd={:.3f} ref_h={:.3f}",
         step,
         mode == ActiveMode::Gen ? "gen" : "clips",
         clip_meta,
@@ -947,7 +975,9 @@ int main(int argc, char** argv)
         episode,
         joy_to,
         cmd_vx,
-        mode == ActiveMode::Gen ? last_boost : 1.0f,
+        last_vel_mult,
+        crouch_active,
+        sprint_active,
         mode == ActiveMode::Gen ? gen_height_cmd : 0.0f,
         arc.empty() ? 0.0f : arc[0]);
     }

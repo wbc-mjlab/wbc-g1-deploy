@@ -46,14 +46,17 @@ GenObsBuilder::GenObsBuilder(GenDeployParams params)
   for (const auto& name : params_.state_observation_names) {
     rings_[name] = {};
   }
-  const float h0 = default_stand_height(params_);
-  seed_height(h0);
+  seed_height(default_stand_height(params_));
   reset(standing_proprio_sample(params_));
 }
 
 void GenObsBuilder::seed_height(float height)
 {
   height_cmd_ = height;
+  if (params_.command.height_setpoint_dim > 0) {
+    height_wp_.assign(1, height);
+    return;
+  }
   const int k = static_cast<int>(params_.command.horizons.size());
   height_wp_.assign(static_cast<size_t>(std::max(k, 0)), height);
 }
@@ -150,7 +153,15 @@ std::vector<float> GenObsBuilder::build_obs(float vx, float vy, float wz)
     ang);
 
   std::vector<float> height;
-  if (params_.command.height_features_per_horizon > 0) {
+  const float scale = params_.command.height_scale;
+  if (scale <= 0.0f) {
+    throw std::runtime_error("command.height_scale must be positive");
+  }
+  if (params_.command.height_setpoint_dim > 0) {
+    height = {
+      height_cmd_ / scale,
+    };
+  } else if (params_.command.height_features_per_horizon > 0) {
     if (height_wp_.size() != params_.command.horizons.size()) {
       seed_height(height_cmd_);
     }
@@ -160,7 +171,10 @@ std::vector<float> GenObsBuilder::build_obs(float vx, float vy, float wz)
       params_.step_dt,
       params_.command.horizons,
       params_.command.height_lowpass_tau);
-    height = height_wp_;
+    height.resize(height_wp_.size());
+    for (size_t i = 0; i < height_wp_.size(); ++i) {
+      height[i] = height_wp_[i] / scale;
+    }
   }
 
   const auto cmd = pack_command_xy_height_angle(xy, height, ang);

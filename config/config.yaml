@@ -41,18 +41,19 @@ reference_node:
   clip_liedown: RT + down.on_pressed
   mode_gen: RT + Y.on_pressed      # enter Gen locomotion
   mode_clips: RT + X.on_pressed    # return to clip select
-  # Gen-only height teleop — plain D-pad, without RT (RT+up/down = getup/liedown).
-  height_up: "!RT + up.on_pressed"
-  height_down: "!RT + down.on_pressed"
-  height_reset: RB + Y.on_pressed    # idle stand height 0.80 m
-  height_step: 0.05                  # meters per D-pad press
-  # Gen stick cruise (no RT) × RT boost → clamp to play_vel_ranges
-  # boost = lerp(vel_boost_min, vel_boost_max, RT); Unitree R2 is mostly digital.
-  vel_boost_min: 1.0
-  vel_boost_max: 3.0
-  cruise_lin_vel_x: [-1.0, 1.5]
+  # Gen gaits: each has torso height + vel_mult on shared cruise limits.
+  # Priority crouch > sprint > walk. Tips: walk ~1.2, sprint ~3.7, crouch ~0.9 m/s.
+  stand_height: 0.81
+  walk_vel_mult: 1.0
+  sprint: RT
+  sprint_height: 0.75
+  sprint_vel_mult: 3.5
+  crouch: RB
+  crouch_height: 0.5
+  crouch_vel_mult: 0.8
+  cruise_lin_vel_x: [-1.0, 1.4]
   cruise_lin_vel_y: [-1.0, 1.0]
-  cruise_ang_vel_z: [-3.0, 3.0]
+  cruise_ang_vel_z: [-2., 2.]
   # infer_log_every: 50            # log Gen ONNX timing every N steps (0=off)
   # Logging: quiet by default (mode/clip transitions only). Pass --verbose for
   # step heartbeats / joy edges. Controller: same via wbc_g1_ctrl --verbose.
