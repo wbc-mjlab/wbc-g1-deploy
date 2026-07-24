@@ -17,8 +17,9 @@ GenReferenceEngine::GenReferenceEngine(
   runner_ = std::make_unique<isaaclab::OrtRunner>(
     onnx.string(), "gen", infer_log_every);
   spdlog::info(
-    "Gen ONNX loaded: {} (infer_log_every={})",
+    "Gen ONNX loaded: {} type={} (infer_log_every={})",
     onnx.string(),
+    params_.model.type,
     infer_log_every);
 }
 

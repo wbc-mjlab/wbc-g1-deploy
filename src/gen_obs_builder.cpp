@@ -152,33 +152,47 @@ std::vector<float> GenObsBuilder::build_obs(float vx, float vy, float wz)
     xy,
     ang);
 
-  std::vector<float> height;
   const float scale = params_.command.height_scale;
   if (scale <= 0.0f) {
     throw std::runtime_error("command.height_scale must be positive");
   }
-  if (params_.command.height_setpoint_dim > 0) {
-    height = {
-      height_cmd_ / scale,
-    };
-  } else if (params_.command.height_features_per_horizon > 0) {
-    if (height_wp_.size() != params_.command.horizons.size()) {
-      seed_height(height_cmd_);
-    }
-    lowpass_height_waypoints(
-      height_wp_,
-      height_cmd_,
-      params_.step_dt,
-      params_.command.horizons,
-      params_.command.height_lowpass_tau);
-    height.resize(height_wp_.size());
-    for (size_t i = 0; i < height_wp_.size(); ++i) {
-      height[i] = height_wp_[i] / scale;
-    }
-  }
 
-  const auto cmd = pack_command_xy_height_angle(xy, height, ang);
-  obs.insert(obs.end(), cmd.begin(), cmd.end());
+  for (const auto& name : params_.command.term_names) {
+    const auto& term = params_.command.observations.at(name);
+    std::vector<float> block;
+    if (name == "cmd_xy_waypoints") {
+      block = xy;
+    } else if (name == "cmd_angle_waypoints") {
+      block = ang;
+    } else if (name == "cmd_height_setpoint") {
+      block.assign(static_cast<size_t>(term.flat_width), height_cmd_ / scale);
+    } else if (name == "cmd_height_waypoints") {
+      if (height_wp_.size() != params_.command.horizons.size()) {
+        seed_height(height_cmd_);
+      }
+      lowpass_height_waypoints(
+        height_wp_,
+        height_cmd_,
+        params_.step_dt,
+        params_.command.horizons,
+        params_.command.height_lowpass_tau);
+      block.resize(height_wp_.size());
+      for (size_t i = 0; i < height_wp_.size(); ++i) {
+        block[i] = height_wp_[i] / scale;
+      }
+    } else if (name.rfind("cmd_future_", 0) == 0) {
+      // Teleop does not synthesize future-Arc fields; zeros keep dim layout.
+      block.assign(static_cast<size_t>(term.flat_width), 0.0f);
+    } else {
+      throw std::runtime_error("Unsupported command term for teleop packing: " + name);
+    }
+    if (static_cast<int>(block.size()) != term.flat_width) {
+      throw std::runtime_error(
+        "Command term " + name + " width " + std::to_string(block.size()) +
+        " != flat_width " + std::to_string(term.flat_width));
+    }
+    obs.insert(obs.end(), block.begin(), block.end());
+  }
 
   if (static_cast<int>(obs.size()) != params_.input_dim) {
     throw std::runtime_error(

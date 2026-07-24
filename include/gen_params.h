@@ -18,25 +18,47 @@ struct GenStateTermCfg {
   std::vector<float> scale;
 };
 
-struct GenCommandCfg {
-  std::string packing = "xy_then_height_then_angle";
+struct GenCommandTermCfg {
+  std::string deploy_name;
+  std::string training_name;
+  int dim = 0;
+  int history_length = 0;
+  int flat_width = 0;
+  std::vector<float> scale;
   std::vector<int> horizons;
   float position_scale = 1.0f;
-  int xy_features_per_horizon = 2;
-  int height_features_per_horizon = 1;
-  /// Single absolute height setpoint (wbc_ref); 0 = per-horizon heights.
-  int height_setpoint_dim = 0;
-  int angle_features_per_horizon = 2;
-  float height_lowpass_tau = 0.10f;
-  /// Divide absolute height by this (match training ``height_scale``).
   float height_scale = 1.0f;
+  float height_lowpass_tau = 0.0f;
+  int height_setpoint_dim = 0;
+  int features_per_horizon = 0;
+};
+
+struct GenCommandCfg {
+  std::vector<std::string> term_names;
+  std::unordered_map<std::string, GenCommandTermCfg> observations;
+  std::vector<int> horizons;
+  float position_scale = 1.0f;
+  float height_scale = 1.0f;
+  float height_lowpass_tau = 0.10f;
+  /// Derived convenience for teleop (0 = no setpoint term).
+  int height_setpoint_dim = 0;
+  /// Derived convenience for teleop (0 = no per-horizon height).
+  int height_features_per_horizon = 0;
 };
 
 struct GenModelCfg {
   std::string onnx_file = "generator.onnx";
   std::string onnx_input_name = "obs";
   std::string onnx_output_name = "reference";
+  /// Backend used at training / ONNX export (``flow_ae``, ``cascade_ae``, …).
   std::string type;
+  /// Optional metadata (present depending on ``type``).
+  int n_euler_steps = 0;
+  int latent_dim = 0;
+  int intent_dim = 0;
+  bool refine = false;
+  bool use_ae = false;
+  int history_length = 0;
 };
 
 struct GenDeployParams {
@@ -60,7 +82,7 @@ struct GenDeployParams {
   std::filesystem::path params_dir;
 };
 
-/// Load ``wbc_gen_deploy_params_v1`` from ``params/config.yaml``.
+/// Load ``wbc_gen_deploy_params_v2`` from ``params/config.yaml``.
 GenDeployParams load_gen_deploy_params(const std::filesystem::path& params_dir);
 
 std::filesystem::path resolve_generator_onnx(const GenDeployParams& params);

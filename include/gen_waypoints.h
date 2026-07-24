@@ -25,15 +25,4 @@ void lowpass_height_waypoints(
   const std::vector<int>& horizons,
   float tau);
 
-/// Pack ``xy ‖ height ‖ angle`` (or ``xy ‖ angle`` when height empty).
-std::vector<float> pack_command_xy_height_angle(
-  const std::vector<float>& xy,
-  const std::vector<float>& height,
-  const std::vector<float>& ang);
-
-/// Legacy pack ``xy ‖ angle``.
-std::vector<float> pack_command_xy_angle(
-  const std::vector<float>& xy,
-  const std::vector<float>& ang);
-
 }  // namespace wbc_deploy

@@ -24,7 +24,7 @@ reference_node:
   initial_up: true     # true=stand hold (first idle); false=floor hold (getup frame 0)
   # stand_prep / floor_prep mirror Passive → FixStand / FloorReady (LT+up / LT+down)
   # so the Arc matches before the single policy enable (ctrl RT+A).
-  gen_dir: config/policy/gen/kin
+  gen_dir: config/policy/gen/cascade
   pose_clips:
     getup: getup_01
     liedown: liedown_01
@@ -58,7 +58,7 @@ reference_node:
   # Logging: quiet by default (mode/clip transitions only). Pass --verbose for
   # step heartbeats / joy edges. Controller: same via wbc_g1_ctrl --verbose.
 
-gen_dir: config/policy/gen/kin
+gen_dir: config/policy/gen/cascade
 
 FSM:
   _:

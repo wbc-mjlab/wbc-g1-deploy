@@ -93,24 +93,4 @@ void lowpass_height_waypoints(
   }
 }
 
-std::vector<float> pack_command_xy_height_angle(
-  const std::vector<float>& xy,
-  const std::vector<float>& height,
-  const std::vector<float>& ang)
-{
-  std::vector<float> out;
-  out.reserve(xy.size() + height.size() + ang.size());
-  out.insert(out.end(), xy.begin(), xy.end());
-  out.insert(out.end(), height.begin(), height.end());
-  out.insert(out.end(), ang.begin(), ang.end());
-  return out;
-}
-
-std::vector<float> pack_command_xy_angle(
-  const std::vector<float>& xy,
-  const std::vector<float>& ang)
-{
-  return pack_command_xy_height_angle(xy, {}, ang);
-}
-
 }  // namespace wbc_deploy
