@@ -34,6 +34,9 @@ struct ArticulationData
     // Root angular velocity in base frame.
     Eigen::Vector3f root_ang_vel_b;
 
+    // IMU linear acceleration in base frame (Unitree accelerometer).
+    Eigen::Vector3f imu_lin_acc_b = Eigen::Vector3f::Zero();
+
     // Root linear velocity in base frame (state-estimation policies).
     Eigen::Vector3f root_lin_vel_b = Eigen::Vector3f::Zero();
 

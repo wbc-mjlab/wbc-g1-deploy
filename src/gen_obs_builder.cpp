@@ -180,6 +180,9 @@ std::vector<float> GenObsBuilder::build_obs(float vx, float vy, float wz)
       for (size_t i = 0; i < height_wp_.size(); ++i) {
         block[i] = height_wp_[i] / scale;
       }
+    } else if (term.has_deploy_constant) {
+      // Train-only soft masks (e.g. cmd_joint_trust): no robot-side β.
+      block.assign(static_cast<size_t>(term.flat_width), term.deploy_constant);
     } else if (name.rfind("cmd_future_", 0) == 0) {
       // Teleop does not synthesize future-Arc fields; zeros keep dim layout.
       block.assign(static_cast<size_t>(term.flat_width), 0.0f);

@@ -31,6 +31,9 @@ struct GenCommandTermCfg {
   float height_lowpass_tau = 0.0f;
   int height_setpoint_dim = 0;
   int features_per_horizon = 0;
+  /// If set, teleop packs this constant (train-only signals e.g. joint trust).
+  bool has_deploy_constant = false;
+  float deploy_constant = 1.0f;
 };
 
 struct GenCommandCfg {

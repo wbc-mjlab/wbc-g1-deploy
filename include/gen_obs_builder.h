@@ -10,7 +10,7 @@
 namespace wbc_deploy {
 
 /// Single-frame proprio sample. Keys are **deploy** state names from
-/// ``params/config.yaml`` (e.g. ``joint_pos_rel``, ``joint_torque``).
+/// ``params/config.yaml`` (e.g. ``joint_pos_rel``, ``joint_torque``, ``imu_lin_acc``).
 ///
 /// Fill all available sensors once; ``GenObsBuilder`` only packs terms listed
 /// in the YAML so train/export can add or remove terms without C++ changes

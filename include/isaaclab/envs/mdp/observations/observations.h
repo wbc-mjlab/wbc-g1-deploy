@@ -108,5 +108,17 @@ REGISTER_OBSERVATION(last_action)
     return std::vector<float>(data.data(), data.data() + data.size());
 };
 
+REGISTER_OBSERVATION(imu_lin_acc)
+{
+    auto & data = env->robot->data.imu_lin_acc_b;
+    return std::vector<float>(data.data(), data.data() + data.size());
+}
+
+REGISTER_OBSERVATION(joint_torque)
+{
+    auto & data = env->robot->data.joint_torque;
+    return std::vector<float>(data.data(), data.data() + data.size());
+}
+
 }
 }

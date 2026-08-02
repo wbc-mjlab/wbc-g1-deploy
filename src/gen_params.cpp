@@ -45,6 +45,10 @@ GenCommandTermCfg parse_command_term(const std::string& name, const YAML::Node& 
   cfg.height_lowpass_tau = term["height_lowpass_tau"].as<float>(0.0f);
   cfg.height_setpoint_dim = term["height_setpoint_dim"].as<int>(0);
   cfg.features_per_horizon = term["features_per_horizon"].as<int>(0);
+  if (term["deploy_constant"]) {
+    cfg.has_deploy_constant = true;
+    cfg.deploy_constant = term["deploy_constant"].as<float>();
+  }
   return cfg;
 }
 

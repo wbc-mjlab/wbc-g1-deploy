@@ -86,6 +86,12 @@ command:
       horizons: [15, 30, 60]
       features_per_horizon: 2
   horizons: [15, 30, 60]
+  command_style: waypoints
+  height_as_setpoint: true
+  include_link_height: true
+  height_lowpass_tau: 0.0
+  position_scale: 3.6
+  height_scale: 1.0
 outputs:
   field_order: [ref_base_height, ref_base_lin_vel_b, ref_base_ang_vel_b, ref_gravity_b,
     ref_joint_pos]
@@ -99,4 +105,4 @@ play_vel_ranges:
   lin_vel_x: [-1.5, 4.0]
   lin_vel_y: [-1.0, 1.0]
   ang_vel_z: [-3.0, 3.0]
-  height: [0.75, 0.85]
+  height: [0.1, 0.85]

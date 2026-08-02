@@ -136,6 +136,13 @@ wbc_deploy::GenProprioSample proprio_from_articulation(
   s.set("joint_pos_rel", std::move(joint_pos_rel));
   s.set("joint_vel_rel", std::move(joint_vel_rel));
   s.set("joint_torque", std::move(joint_torque));
+  s.set(
+    "imu_lin_acc",
+    {
+      data.imu_lin_acc_b.x(),
+      data.imu_lin_acc_b.y(),
+      data.imu_lin_acc_b.z(),
+    });
   return s;
 }
 
@@ -380,6 +387,7 @@ int main(int argc, char** argv)
     robot->data.joint_pos = robot->data.default_joint_pos;
     robot->data.joint_vel = Eigen::VectorXf::Zero(robot->data.joint_pos.size());
     robot->data.joint_torque = Eigen::VectorXf::Zero(robot->data.joint_pos.size());
+    robot->data.imu_lin_acc_b = Eigen::Vector3f::Zero();
     spdlog::info("Connected to robot lowstate (joystick ready)");
   } else {
     spdlog::info(

@@ -21,9 +21,10 @@ public:
     void update() override
     {
         std::lock_guard<std::mutex> lock(lowstate->mutex_);
-        // base_angular_velocity
+        // base_angular_velocity + IMU linear acceleration
         for(int i(0); i<3; i++) {
             data.root_ang_vel_b[i] = lowstate->msg_.imu_state().gyroscope()[i];
+            data.imu_lin_acc_b[i] = lowstate->msg_.imu_state().accelerometer()[i];
         }
         // project_gravity_body
         data.root_quat_w = Eigen::Quaternionf(
