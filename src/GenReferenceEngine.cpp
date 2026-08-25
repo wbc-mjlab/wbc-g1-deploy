@@ -43,6 +43,21 @@ void GenReferenceEngine::seed_height(float height_m)
   obs_.seed_height(height_m);
 }
 
+void GenReferenceEngine::set_style(int style_index)
+{
+  obs_.set_style(style_index);
+}
+
+void GenReferenceEngine::set_style(const std::string& style_name)
+{
+  obs_.set_style(style_name);
+}
+
+void GenReferenceEngine::set_style_and_height(int style_index)
+{
+  obs_.set_style_and_height(style_index);
+}
+
 std::vector<float> GenReferenceEngine::step(float vx, float vy, float wz)
 {
   if (!obs_.history_ready()) {

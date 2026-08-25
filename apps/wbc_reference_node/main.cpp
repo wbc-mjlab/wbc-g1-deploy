@@ -10,7 +10,7 @@
 ///
 ///   ./wbc_reference_node -n eth0
 ///   ./wbc_reference_node --mode gen -n eth0
-///   ./wbc_reference_node --dry-run --vx 0.5   # stdin: G/c n/p/Enter u/d z=crouch
+///   ./wbc_reference_node --dry-run --vx 0.5   # stdin: G/c n/p/Enter u/d z=crouch j/k=sit/loco
 
 #include "GenReferenceEngine.h"
 #include "MotionClipLibrary.h"
@@ -26,6 +26,7 @@
 #include <spdlog/spdlog.h>
 
 #include <atomic>
+#include <algorithm>
 #include <chrono>
 #include <csignal>
 #include <cmath>
@@ -91,6 +92,46 @@ float gen_height_cmd_for(
     return sprint_h;
   }
   return stand_h;
+}
+
+/// Sticky Gen posture for sit (D-pad); loco uses crouch/sprint buttons.
+enum class GenPosture { Loco = 0, Sit = 1 };
+
+const char* gen_posture_name(GenPosture p)
+{
+  switch (p) {
+    case GenPosture::Sit:
+      return "sit";
+    case GenPosture::Loco:
+    default:
+      return "loco";
+  }
+}
+
+GenPosture gen_posture_from_delta(GenPosture cur, int delta)
+{
+  if (delta > 0) {
+    return GenPosture::Sit;
+  }
+  if (delta < 0) {
+    return GenPosture::Loco;
+  }
+  return cur;
+}
+
+/// Map posture + gait buttons → ``wbc_loco_style`` index.
+int gen_style_index_for(GenPosture posture, bool crouch, bool sprint)
+{
+  if (posture == GenPosture::Sit) {
+    return 3;  // sit
+  }
+  if (crouch) {
+    return 1;  // crouch
+  }
+  if (sprint) {
+    return 2;  // run
+  }
+  return 0;  // stand_walk
 }
 
 std::string yaml_str(const YAML::Node& node, const char* key, const std::string& def)
@@ -213,8 +254,10 @@ int main(int argc, char** argv)
       << "Gen mode:\n"
       << "  L-stick Y/X   vx forward/back, vy strafe\n"
       << "  R-stick X     wz yaw\n"
-      << "  Hold RT       sprint: height→sprint_height, cruise × sprint_vel_mult\n"
-      << "  Hold RB (R1)  crouch: height→crouch_height, cruise × crouch_vel_mult\n"
+      << "  Hold RT       sprint / run style (when style overlay)\n"
+      << "  Hold RB (R1)  crouch style (when style overlay)\n"
+      << "  D-pad down    sit (bare pad; no RT/LT)\n"
+      << "  D-pad up      return to walk/run/crouch\n"
       << "Getup/liedown always force clips mode (from clips; use RT+X then up/down).\n"
       << "Logging: quiet by default (mode/clip changes only); --verbose for step status.\n";
     return 0;
@@ -278,6 +321,19 @@ int main(int argc, char** argv)
     gen = std::make_unique<wbc_deploy::GenReferenceEngine>(
       gen_dir / "params", infer_log_every);
     gen->reset();
+    if (gen->has_style()) {
+      std::string style_list;
+      for (const auto& n : gen->params().command.style_names) {
+        if (!style_list.empty()) {
+          style_list += ", ";
+        }
+        style_list += n;
+      }
+      spdlog::info(
+        "Gen style command enabled ({} modes: {})",
+        gen->params().command.style_dim,
+        style_list);
+    }
   } catch (const std::exception& exc) {
     if (mode == ActiveMode::Gen) {
       spdlog::error("Gen required but failed to load: {}", exc.what());
@@ -321,6 +377,11 @@ int main(int argc, char** argv)
   // Gen gait: cruise × vel_mult + dedicated torso height (crouch > sprint > stand).
   const std::string expr_crouch = yaml_str(ref_cfg, "crouch", "RB");
   const std::string expr_sprint = yaml_str(ref_cfg, "sprint", "RT");
+  // Bare D-pad (no RT/LT): sit while in Gen.
+  const std::string expr_style_down =
+    yaml_str(ref_cfg, "style_down", "!RT + !LT + down.on_pressed");
+  const std::string expr_style_up =
+    yaml_str(ref_cfg, "style_up", "!RT + !LT + up.on_pressed");
   const float stand_height_cfg =
     ref_cfg["stand_height"] ? ref_cfg["stand_height"].as<float>() : 0.81f;
   const float sprint_height =
@@ -348,6 +409,8 @@ int main(int argc, char** argv)
   auto mode_clips_fn = compileJoystickExpr(expr_mode_clips);
   auto crouch_fn = compileJoystickExpr(expr_crouch);
   auto sprint_fn = compileJoystickExpr(expr_sprint);
+  auto style_down_fn = compileJoystickExpr(expr_style_down);
+  auto style_up_fn = compileJoystickExpr(expr_style_up);
   auto stand_prep_fn = compileJoystickExpr(expr_stand_prep);
   auto floor_prep_fn = compileJoystickExpr(expr_floor_prep);
   auto floor_prep_hold_fn = compileJoystickExpr(expr_floor_prep_hold);
@@ -392,7 +455,7 @@ int main(int argc, char** argv)
   } else {
     spdlog::info(
       "Dry-run: stdin (n/p/Enter browse/play; u/d getup/liedown; z=crouch toggle; "
-      "G=gen C=clips q)");
+      "j/k sit/loco; G=gen C=clips q)");
   }
 
   const auto dds = wbc_deploy::load_reference_dds_config(root, YAML::Node{});
@@ -460,11 +523,14 @@ int main(int argc, char** argv)
   bool sprint_active = false;
   bool crouch_was_active = false;
   bool sprint_was_active = false;
+  GenPosture gen_posture = GenPosture::Loco;
+  GenPosture gen_posture_was = GenPosture::Loco;
 
   spdlog::info(
     "Bindings: next='{}' prev='{}' play='{}' getup='{}' liedown='{}' "
     "stand_prep='{}' floor_prep='{}' "
     "mode_gen='{}' mode_clips='{}' crouch='{}' sprint='{}' "
+    "style_down='{}' style_up='{}' "
     "(stand h={:.2f} sprint h={:.2f} crouch h={:.2f})",
     expr_next,
     expr_prev,
@@ -477,6 +543,8 @@ int main(int argc, char** argv)
     expr_mode_clips,
     expr_crouch,
     expr_sprint,
+    expr_style_down,
+    expr_style_up,
     default_height,
     sprint_height_cmd,
     crouch_height_cmd);
@@ -497,6 +565,7 @@ int main(int argc, char** argv)
 
   std::atomic<int> stdin_cmd{0};  // mirror joystick for dry-run
   std::atomic<bool> stdin_crouch{false};
+  std::atomic<int> stdin_posture_delta{0};  // +1 sit, -1 loco
   std::thread stdin_thread;
   if (dry_run) {
     stdin_thread = std::thread([&] {
@@ -517,6 +586,10 @@ int main(int argc, char** argv)
           stdin_cmd.store(5);  // liedown
         } else if (line == "z" || line == "Z") {
           stdin_crouch.store(!stdin_crouch.load());
+        } else if (line == "j" || line == "J") {
+          stdin_posture_delta.store(1);  // sit
+        } else if (line == "k" || line == "K") {
+          stdin_posture_delta.store(-1);  // loco
         } else if (line == "G") {
           stdin_cmd.store(7);  // gen
         } else if (line == "C" || line == "c") {
@@ -626,11 +699,18 @@ int main(int argc, char** argv)
     ui.awaiting_select = false;
     ++episode;
     gen->reset();
-    gen_height_cmd = default_height;
     crouch_was_active = false;
     sprint_was_active = false;
     stdin_crouch.store(false);
-    gen->seed_height(gen_height_cmd);
+    gen_posture = GenPosture::Loco;
+    gen_posture_was = GenPosture::Loco;
+    if (gen->has_style()) {
+      gen->set_style_and_height(0);  // stand_walk
+      gen_height_cmd = gen->height_cmd();
+    } else {
+      gen_height_cmd = default_height;
+      gen->seed_height(gen_height_cmd);
+    }
     if (robot) {
       robot->update();
       gen->push_proprio(proprio_from_articulation(robot->data));
@@ -648,12 +728,8 @@ int main(int argc, char** argv)
     spdlog::info(
       "Hit: {} — switched to Generator "
       "(L-stick Y→vx X→vy; R-stick X→wz; "
-      "RT=sprint h={:.2f} ×{:.2f}; RB=crouch h={:.2f} ×{:.2f}; RT+X → clips)",
-      hit,
-      sprint_height_cmd,
-      sprint_vel_mult,
-      crouch_height_cmd,
-      crouch_vel_mult);
+      "RT=sprint; RB=crouch; D-pad down/up=sit↔loco; RT+X → clips)",
+      hit);
   };
 
   // Initial reference pose for policy bring-up (no episode bump yet).
@@ -714,6 +790,14 @@ int main(int argc, char** argv)
       if (mode == ActiveMode::Gen) {
         crouch_active = crouch_fn && crouch_fn(joy);
         sprint_active = sprint_fn && sprint_fn(joy);
+        if (gen && gen->has_style()) {
+          if (style_down_fn && style_down_fn(joy)) {
+            gen_posture = gen_posture_from_delta(gen_posture, +1);
+          }
+          if (style_up_fn && style_up_fn(joy)) {
+            gen_posture = gen_posture_from_delta(gen_posture, -1);
+          }
+        }
       }
       do_stand_prep = stand_prep_fn && stand_prep_fn(joy);
       do_floor_prep = floor_prep_fn && floor_prep_fn(joy);
@@ -769,6 +853,10 @@ int main(int argc, char** argv)
       }
     } else if (dry_run && mode == ActiveMode::Gen) {
       crouch_active = stdin_crouch.load();
+      const int posture_delta = stdin_posture_delta.exchange(0);
+      if (posture_delta != 0 && gen && gen->has_style()) {
+        gen_posture = gen_posture_from_delta(gen_posture, posture_delta);
+      }
       const float vel_mult = gen_vel_mult(
         crouch_active, false, crouch_vel_mult, sprint_vel_mult, walk_vel_mult);
       cmd_vx = clampf(default_vx * vel_mult, play_vx_lo, play_vx_hi);
@@ -894,45 +982,78 @@ int main(int argc, char** argv)
       } else if (do_play) {
         enter_stand_hold(sc == 3 ? "stdin Enter" : "A");
       }
-      gen_height_cmd = gen_height_cmd_for(
-        crouch_active,
-        sprint_active,
-        crouch_height_cmd,
-        sprint_height_cmd,
-        default_height);
-      if (crouch_active != crouch_was_active) {
-        spdlog::info(
-          "Gen crouch {} (h={:.3f} m, vel_mult={:.2f})",
-          crouch_active ? "ON" : "OFF",
-          gen_height_cmd,
-          gen_vel_mult(
-            crouch_active,
-            sprint_active,
-            crouch_vel_mult,
-            sprint_vel_mult,
-            walk_vel_mult));
-        if (gen) {
-          gen->seed_height(gen_height_cmd);
+      const bool styled = gen && gen->has_style();
+      if (styled) {
+        const int style_idx =
+          gen_style_index_for(gen_posture, crouch_active, sprint_active);
+        const bool posture_edge = gen_posture != gen_posture_was;
+        if (style_idx != gen->style_index() ||
+            posture_edge ||
+            crouch_active != crouch_was_active ||
+            sprint_active != sprint_was_active) {
+          gen->set_style_and_height(style_idx);
+          const auto& names = gen->params().command.style_names;
+          const std::string style_name =
+            (style_idx >= 0 && style_idx < static_cast<int>(names.size()))
+              ? names[static_cast<size_t>(style_idx)]
+              : std::to_string(style_idx);
+          gen_height_cmd = gen->height_cmd();
+          spdlog::info(
+            "Gen style={} posture={} (h={:.3f} m, vel_mult={:.2f})",
+            style_name,
+            gen_posture_name(gen_posture),
+            gen_height_cmd,
+            gen_vel_mult(
+              crouch_active,
+              sprint_active,
+              crouch_vel_mult,
+              sprint_vel_mult,
+              walk_vel_mult));
+        } else {
+          gen_height_cmd = gen->height_cmd();
         }
-      }
-      if (sprint_active != sprint_was_active && !crouch_active) {
-        spdlog::info(
-          "Gen sprint {} (h={:.3f} m, vel_mult={:.2f})",
-          sprint_active ? "ON" : "OFF",
-          gen_height_cmd,
-          gen_vel_mult(
-            false,
-            sprint_active,
-            crouch_vel_mult,
-            sprint_vel_mult,
-            walk_vel_mult));
-        if (gen) {
-          gen->seed_height(gen_height_cmd);
+      } else {
+        gen_height_cmd = gen_height_cmd_for(
+          crouch_active,
+          sprint_active,
+          crouch_height_cmd,
+          sprint_height_cmd,
+          default_height);
+        if (crouch_active != crouch_was_active) {
+          spdlog::info(
+            "Gen crouch {} (h={:.3f} m, vel_mult={:.2f})",
+            crouch_active ? "ON" : "OFF",
+            gen_height_cmd,
+            gen_vel_mult(
+              crouch_active,
+              sprint_active,
+              crouch_vel_mult,
+              sprint_vel_mult,
+              walk_vel_mult));
+          if (gen) {
+            gen->seed_height(gen_height_cmd);
+          }
+        }
+        if (sprint_active != sprint_was_active && !crouch_active) {
+          spdlog::info(
+            "Gen sprint {} (h={:.3f} m, vel_mult={:.2f})",
+            sprint_active ? "ON" : "OFF",
+            gen_height_cmd,
+            gen_vel_mult(
+              false,
+              sprint_active,
+              crouch_vel_mult,
+              sprint_vel_mult,
+              walk_vel_mult));
+          if (gen) {
+            gen->seed_height(gen_height_cmd);
+          }
         }
       }
     }
     crouch_was_active = crouch_active;
     sprint_was_active = sprint_active;
+    gen_posture_was = gen_posture;
 
     // --- publish ---
     std::vector<float> arc;

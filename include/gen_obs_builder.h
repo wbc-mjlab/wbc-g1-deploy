@@ -46,6 +46,12 @@ public:
   void set_height_cmd(float height_cmd);
   void seed_height(float height);
 
+  /// Discrete locomotion style (``cmd_style`` one-hot). No-op if overlay has no style.
+  void set_style(int style_index);
+  void set_style(const std::string& style_name);
+  /// Apply style and seed height to the mid of that style's envelope (when known).
+  void set_style_and_height(int style_index);
+
   /// Flat ``state ‖ command`` vector of size ``input_dim``.
   /// Advances the height cascade one control step when height features are enabled.
   std::vector<float> build_obs(float vx, float vy, float wz);
@@ -53,6 +59,8 @@ public:
   const GenDeployParams& params() const { return params_; }
   bool history_ready() const { return history_ready_; }
   float height_cmd() const { return height_cmd_; }
+  int style_index() const { return style_index_; }
+  bool has_style() const { return params_.command.style_dim > 0; }
 
 private:
   GenDeployParams params_;
@@ -60,6 +68,7 @@ private:
   bool history_ready_ = false;
   float height_cmd_ = 0.80f;
   std::vector<float> height_wp_;
+  int style_index_ = 0;
 };
 
 }  // namespace wbc_deploy

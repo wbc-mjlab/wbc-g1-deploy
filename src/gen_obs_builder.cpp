@@ -66,6 +66,48 @@ void GenObsBuilder::set_height_cmd(float height_cmd)
   height_cmd_ = height_cmd;
 }
 
+void GenObsBuilder::set_style(int style_index)
+{
+  if (params_.command.style_dim <= 0) {
+    return;
+  }
+  style_index_ = std::clamp(style_index, 0, params_.command.style_dim - 1);
+}
+
+void GenObsBuilder::set_style(const std::string& style_name)
+{
+  if (params_.command.style_dim <= 0) {
+    return;
+  }
+  const auto& names = params_.command.style_names;
+  for (size_t i = 0; i < names.size(); ++i) {
+    if (names[i] == style_name) {
+      set_style(static_cast<int>(i));
+      return;
+    }
+  }
+  throw std::runtime_error("Unknown locomotion style: " + style_name);
+}
+
+void GenObsBuilder::set_style_and_height(int style_index)
+{
+  set_style(style_index);
+  if (params_.command.style_dim <= 0) {
+    return;
+  }
+  const auto& names = params_.command.style_names;
+  if (style_index_ < 0 || style_index_ >= static_cast<int>(names.size())) {
+    return;
+  }
+  const auto& name = names[static_cast<size_t>(style_index_)];
+  const auto it = params_.command.style_height_ranges.find(name);
+  if (it == params_.command.style_height_ranges.end()) {
+    return;
+  }
+  const float mid = 0.5f * (it->second.first + it->second.second);
+  seed_height(mid);
+}
+
 void GenObsBuilder::reset(const GenProprioSample& fill)
 {
   for (const auto& name : params_.state_observation_names) {
@@ -160,7 +202,13 @@ std::vector<float> GenObsBuilder::build_obs(float vx, float vy, float wz)
   for (const auto& name : params_.command.term_names) {
     const auto& term = params_.command.observations.at(name);
     std::vector<float> block;
-    if (name == "cmd_xy_waypoints") {
+    if (name == "cmd_style") {
+      block.assign(static_cast<size_t>(term.flat_width), 0.0f);
+      const int idx = std::clamp(style_index_, 0, term.flat_width - 1);
+      if (term.flat_width > 0) {
+        block[static_cast<size_t>(idx)] = 1.0f;
+      }
+    } else if (name == "cmd_xy_waypoints") {
       block = xy;
     } else if (name == "cmd_angle_waypoints") {
       block = ang;

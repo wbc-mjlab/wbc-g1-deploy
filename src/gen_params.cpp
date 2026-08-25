@@ -49,6 +49,21 @@ GenCommandTermCfg parse_command_term(const std::string& name, const YAML::Node& 
     cfg.has_deploy_constant = true;
     cfg.deploy_constant = term["deploy_constant"].as<float>();
   }
+  if (term["style_names"]) {
+    for (const auto& n : term["style_names"]) {
+      cfg.style_names.push_back(n.as<std::string>());
+    }
+  }
+  if (term["style_height_ranges"] && term["style_height_ranges"].IsMap()) {
+    for (const auto& it : term["style_height_ranges"]) {
+      const auto& range = it.second;
+      if (!range || !range.IsSequence() || range.size() < 2) {
+        continue;
+      }
+      cfg.style_height_ranges[it.first.as<std::string>()] = {
+        range[0].as<float>(), range[1].as<float>()};
+    }
+  }
   return cfg;
 }
 
@@ -96,6 +111,36 @@ void parse_modular_command(const YAML::Node& cmd, GenCommandCfg& out)
     out.height_features_per_horizon =
       hwp_it->second.features_per_horizon > 0 ? hwp_it->second.features_per_horizon
                                               : 1;
+  }
+  const auto style_it = out.observations.find("cmd_style");
+  if (style_it != out.observations.end()) {
+    out.style_dim = style_it->second.flat_width;
+    out.style_names = style_it->second.style_names;
+    out.style_height_ranges = style_it->second.style_height_ranges;
+    if (out.style_names.empty() && cmd["style_names"]) {
+      for (const auto& n : cmd["style_names"]) {
+        out.style_names.push_back(n.as<std::string>());
+      }
+    }
+    if (out.style_height_ranges.empty() && cmd["style_height_ranges"] &&
+        cmd["style_height_ranges"].IsMap()) {
+      for (const auto& it : cmd["style_height_ranges"]) {
+        const auto& range = it.second;
+        if (!range || !range.IsSequence() || range.size() < 2) {
+          continue;
+        }
+        out.style_height_ranges[it.first.as<std::string>()] = {
+          range[0].as<float>(), range[1].as<float>()};
+      }
+    }
+    if (out.style_names.empty() && out.style_dim > 0) {
+      // Fallback names matching wbc_gen.mdp.loco_style.STYLE_NAMES.
+      static const char* kDefault[] = {
+        "stand_walk", "crouch", "run", "sit"};
+      for (int i = 0; i < out.style_dim && i < 4; ++i) {
+        out.style_names.emplace_back(kDefault[i]);
+      }
+    }
   }
 }
 

@@ -24,7 +24,7 @@ reference_node:
   initial_up: true     # true=stand hold (first idle); false=floor hold (getup frame 0)
   # stand_prep / floor_prep mirror Passive → FixStand / FloorReady (LT+up / LT+down)
   # so the Arc matches before the single policy enable (ctrl RT+A).
-  gen_dir: config/policy/gen/cascade
+  gen_dir: config/policy/gen/loco_style
   pose_clips:
     getup: getup_01
     liedown: liedown_01
@@ -49,16 +49,16 @@ reference_node:
   sprint_height: 0.75
   sprint_vel_mult: 3.5
   crouch: RB
-  crouch_height: 0.5
-  crouch_vel_mult: 0.8
-  cruise_lin_vel_x: [-1.0, 1.4]
+  crouch_height: 0.55
+  crouch_vel_mult: 0.9
+  cruise_lin_vel_x: [-1.0, 1.2]
   cruise_lin_vel_y: [-1.0, 1.0]
   cruise_ang_vel_z: [-2., 2.]
   # infer_log_every: 50            # log Gen ONNX timing every N steps (0=off)
   # Logging: quiet by default (mode/clip transitions only). Pass --verbose for
   # step heartbeats / joy edges. Controller: same via wbc_g1_ctrl --verbose.
 
-gen_dir: config/policy/gen/cascade
+gen_dir: config/policy/gen/loco_style
 
 FSM:
   _:

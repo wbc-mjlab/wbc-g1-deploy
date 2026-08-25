@@ -7,6 +7,7 @@
 
 #include <filesystem>
 #include <memory>
+#include <string>
 #include <vector>
 
 namespace wbc_deploy {
@@ -30,9 +31,16 @@ public:
   void set_height_cmd(float height_m);
   void seed_height(float height_m);
 
+  /// Discrete locomotion style for ``wbc_loco_style`` (no-op without ``cmd_style``).
+  void set_style(int style_index);
+  void set_style(const std::string& style_name);
+  void set_style_and_height(int style_index);
+
   const GenDeployParams& params() const { return params_; }
   bool history_ready() const { return obs_.history_ready(); }
   float height_cmd() const { return obs_.height_cmd(); }
+  int style_index() const { return obs_.style_index(); }
+  bool has_style() const { return obs_.has_style(); }
 
 private:
   GenDeployParams params_;

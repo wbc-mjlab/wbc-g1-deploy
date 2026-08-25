@@ -34,6 +34,9 @@ struct GenCommandTermCfg {
   /// If set, teleop packs this constant (train-only signals e.g. joint trust).
   bool has_deploy_constant = false;
   float deploy_constant = 1.0f;
+  /// ``cmd_style`` metadata (``wbc_loco_style``).
+  std::vector<std::string> style_names;
+  std::unordered_map<std::string, std::pair<float, float>> style_height_ranges;
 };
 
 struct GenCommandCfg {
@@ -47,6 +50,10 @@ struct GenCommandCfg {
   int height_setpoint_dim = 0;
   /// Derived convenience for teleop (0 = no per-horizon height).
   int height_features_per_horizon = 0;
+  /// Style one-hot dim (0 = overlay has no ``cmd_style``).
+  int style_dim = 0;
+  std::vector<std::string> style_names;
+  std::unordered_map<std::string, std::pair<float, float>> style_height_ranges;
 };
 
 struct GenModelCfg {
